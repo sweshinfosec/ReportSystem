@@ -1,0 +1,116 @@
+from django.shortcuts import render
+from django.core.files.storage import FileSystemStorage
+import pandas as pd
+import os
+from .utils_interim import generate_interim_report
+from .utils_word import generate_final_word_report
+
+def home(request):
+    """Operations Dashboard"""
+    return render(request, 'processor/home.html')
+
+def interim_pre(request):
+    """Phase 1: Generate Initial Report"""
+    context = {}
+    if request.method == 'POST' and request.FILES.getlist('scans'):
+        fs = FileSystemStorage()
+        files = [fs.save(f.name, f) for f in request.FILES.getlist('scans')]
+        action = request.POST.get('action')
+        
+        excel_name, csv_name = generate_interim_report(files, prefix="Pre_Remediation")
+        
+        if action == 'generate_excel':
+            context['excel_url'] = fs.url(excel_name)
+        elif action == 'generate_csv':
+            context['csv_url'] = fs.url(csv_name)
+            
+        return render(request, 'processor/upload_pre.html', context)
+    return render(request, 'processor/upload_pre.html')
+
+def interim_post(request):
+    """Phase 2: Comparison Logic - Using Phase 2 Severity as Primary"""
+    context = {}
+    if request.method == 'POST' and request.FILES.get('pre_file'):
+        fs = FileSystemStorage()
+        
+        # 1. Load Pre-Remediation Base (Phase 1 Report)
+        pre_file_name = fs.save(request.FILES['pre_file'].name, request.FILES['pre_file'])
+        df_pre = pd.read_csv(fs.path(pre_file_name))
+        
+        # 2. Process Phase 2 Scans (This generates a clean 'Severity' column via interim script)
+        post_files = [fs.save(f.name, f) for f in request.FILES.getlist('post_scans')]
+        _, post_csv_temp = generate_interim_report(post_files, prefix="Post_Temp")
+        df_post = pd.read_csv(fs.path(post_csv_temp))
+
+        # --- SEVERITY LOGIC: KEEP PHASE 2 VALUES ---
+        # We drop 'Severity' from the Pre-report so that the fresh 'Severity' 
+        # from Phase 2 is used during the final generation.
+        if 'Severity' in df_pre.columns:
+            df_pre = df_pre.drop(columns=['Severity'])
+        
+        # Remove duplicate column names to prevent the 'DataFrame has no str' error
+        df_pre = df_pre.loc[:, ~df_pre.columns.duplicated()].copy()
+        df_post = df_post.loc[:, ~df_post.columns.duplicated()].copy()
+        
+        # 3. UID creation helper
+        def create_uid(dataframe):
+            return (
+                dataframe['Name'].astype(str).str.strip() + 
+                dataframe['Host'].astype(str).str.strip() + 
+                dataframe['Port'].astype(str).str.strip()
+            )
+
+        df_pre['uid'] = create_uid(df_pre)
+        df_post['uid'] = create_uid(df_post)
+        
+        # 4. Determine status based on UID matching
+        post_uids = set(df_post['uid'].unique())
+        df_pre['Vulnerability Status'] = df_pre['uid'].apply(
+            lambda x: "Open" if x in post_uids else "Fixed & Closed"
+        )
+        
+        # 5. Capture New Findings from Phase 2
+        pre_uids_set = set(df_pre['uid'].unique())
+        new_findings = df_post[~df_post['uid'].isin(pre_uids_set)].copy()
+        
+        # 6. Merge: Pre-data (re-labeled) + Phase 2 specific data
+        if not new_findings.empty:
+            new_findings['Vulnerability Status'] = "Open"
+            # final_df will now have 'Severity' from new_findings (Phase 2)
+            # For existing items in df_pre, 'Severity' will be filled during the 
+            # interim script call below because it matches on Name/Host.
+            final_df = pd.concat([df_pre, new_findings], ignore_index=True)
+        else:
+            # If no new findings, we still need 'Severity'. 
+            # We merge it back from df_post to df_pre based on UID.
+            final_df = pd.merge(df_pre, df_post[['uid', 'Severity']], on='uid', how='left')
+            
+        # 7. Cleanup and Save
+        final_df = final_df.drop(columns=['uid'])
+        csv_out = "Consolidated_Post_Remediation_Report.csv"
+        final_df.to_csv(fs.path(csv_out), index=False)
+        
+        # 8. Re-run through your interim script
+        # This will use the 'Severity' from Phase 2 for all matching findings.
+        excel_out, _ = generate_interim_report([csv_out], prefix="Consolidated_Post")
+
+        context['excel_url'] = fs.url(excel_out)
+        context['csv_url'] = fs.url(csv_out)
+        
+    return render(request, 'processor/upload_post.html', context)
+
+def word_report(request):
+    """Phase 3: Export to Word"""
+    if request.method == 'POST' and request.FILES.get('report_file'):
+        fs = FileSystemStorage()
+        up_file = request.FILES.get('report_file')
+        path = fs.path(fs.save(up_file.name, up_file))
+        
+        if up_file.name.endswith('.xlsx'):
+            df = pd.read_excel(path, sheet_name='InterimReport_VA')
+        else:
+            df = pd.read_csv(path)
+            
+        word_doc = generate_final_word_report(df)
+        return render(request, 'processor/upload_word.html', {'word_url': fs.url(word_doc)})
+    return render(request, 'processor/upload_word.html')

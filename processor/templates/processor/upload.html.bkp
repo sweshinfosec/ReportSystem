@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Security Report Merger</title>
+    <style>
+        body { font-family: sans-serif; padding: 50px; background: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        .btn { background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; width: 100%; }
+        .file-input { margin-bottom: 20px; border: 1px dashed #ccc; padding: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Merge CSV Scans</h2>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="file-input">
+                <label>Select Multiple CSV Files:</label><br><br>
+                <input type="file" name="csv_files" accept=".csv" multiple required>
+            </div>
+            <button type="submit" class="btn">Generate Merged Report</button>
+        </form>
+
+        {% if excel_url %}
+            <div style="margin-top:20px; color: green; text-align: center;">
+                <strong>✔ Merge Complete!</strong><br>
+                <a href="{{ excel_url }}" download>Download Merged Excel</a>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

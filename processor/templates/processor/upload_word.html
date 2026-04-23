@@ -1,0 +1,99 @@
+{% extends "processor/base.html" %}
+
+{% block content %}
+<style>
+    .report-generator-card {
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        background: var(--white);
+        max-width: 650px;
+        margin: 40px auto;
+        padding: 50px;
+    }
+    .card-title-main {
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--primary-dark);
+        font-size: 24px;
+        letter-spacing: 0.5px;
+        text-align: center;
+    }
+    .card-subtitle-main {
+        color: #6C757D;
+        font-size: 14px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    .upload-area-box {
+        border: 1px dashed #B0C0D0;
+        border-radius: 6px;
+        padding: 40px;
+        margin-bottom: 25px;
+        background-color: #F8FAFC;
+        text-align: center;
+    }
+    .btn-process-main {
+        background-color: var(--accent-blue) !important;
+        border-color: var(--accent-blue) !important;
+        color: white !important;
+        font-weight: 600;
+        border-radius: 6px;
+        width: 100%;
+        padding: 12px;
+    }
+    /* Specific Word Blue Color */
+    .btn-download-word {
+        background-color: #2B579A !important; 
+        border-color: #2B579A !important;
+        color: white !important;
+        font-weight: 600;
+        border-radius: 6px;
+        padding: 15px;
+        text-decoration: none;
+        width: 100%;
+        display: block;
+    }
+    .ready-badge {
+        background-color: #E7F3FF;
+        color: #2B579A;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        display: inline-block;
+        margin-bottom: 20px;
+    }
+</style>
+
+<div class="report-generator-card">
+    <h1 class="card-title-main">Final Word Export</h1>
+    <p class="card-subtitle-main">Convert your consolidated findings into a professional .docx report</p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="upload-area-box">
+            <label class="fw-bold mb-1 d-block">Upload Consolidated Report</label>
+            <span class="text-muted small">Select the .xlsx or .csv from Phase 2</span>
+            <input type="file" name="report_file" class="form-control mt-3 mx-auto" style="max-width: 350px;" required>
+        </div>
+
+        <button type="submit" class="btn btn-process-main">
+            <i class="fas fa-file-word me-2"></i>Generate Final Word Document
+        </button>
+    </form>
+
+    {% if word_url %}
+    <hr class="my-4">
+    <div class="text-center">
+        <div class="ready-badge">
+            <i class="fas fa-check me-2"></i>WORD DOCUMENT GENERATED
+        </div>
+        
+        <a href="{{ word_url }}" class="btn btn-download-word text-center">
+            <i class="fas fa-download me-2"></i>DOWNLOAD FINAL REPORT (.docx)
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

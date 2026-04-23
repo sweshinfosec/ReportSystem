@@ -1,0 +1,305 @@
+import os
+from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGN, WD_TAB_LEADER
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from django.conf import settings
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
+
+def set_cell_background(cell, fill):
+    """Sets cell background color via HEX."""
+    shading_elm = OxmlElement('w:shd')
+    shading_elm.set(qn('w:fill'), fill)
+    cell._tc.get_or_add_tcPr().append(shading_elm)
+
+def apply_styling(paragraph, text="", is_bold=False, font_size=10, color=None):
+    """Applies Segoe UI styling and strictly removes paragraph spacing."""
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1.0
+    
+    run = paragraph.add_run(text)
+    run.font.name = 'Segoe UI'
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Segoe UI')
+    run.font.size = Pt(font_size)
+    run.bold = is_bold
+    if color:
+        run.font.color.rgb = color
+    return run
+
+def format_full_width_header(table, row_idx, text):
+    """Merges cells and formats as dark blue header."""
+    row = table.rows[row_idx]
+    merged_cell = row.cells[0].merge(row.cells[1]).merge(row.cells[2])
+    set_cell_background(merged_cell, "2B5797")
+    apply_styling(merged_cell.paragraphs[0], text, is_bold=True, font_size=10, color=RGBColor(255, 255, 255))
+    return merged_cell
+
+def format_full_width_value(table, row_idx):
+    """Merges cells for data content."""
+    row = table.rows[row_idx]
+    return row.cells[0].merge(row.cells[1]).merge(row.cells[2])
+
+def generate_final_word_report(df, workspace=None):
+    if workspace is None:
+        workspace = {}
+    
+    doc = Document()
+    
+    # Global Style Setup
+    style = doc.styles['Normal']
+    style.font.name = 'Segoe UI'
+    style.font.size = Pt(10)
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.line_spacing = 1.0
+
+    # --- 1. COVER PAGE ---
+    
+    # Lines 1 to 7: Force empty lines with a space
+    for _ in range(8):
+        p = doc.add_paragraph()
+        run = p.add_run(" ") # Invisible character to force line height
+        run.font.size = Pt(10)
+
+    # Line 8: Logo
+    logo_path = os.path.join(settings.BASE_DIR, 'static', 'images', 'logo.png')
+    if os.path.exists(logo_path):
+        logo_para = doc.add_paragraph()
+        logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_run = logo_para.add_run()
+        # --- INCREASED SIZE HERE (e.g., 3.5 Inches) ---
+        logo_run.add_picture(logo_path, width=Inches(3.5)) 
+    else:
+        doc.add_paragraph(" ")
+
+    # Line 9: Space before title
+    for _ in range(7):
+        p_space = doc.add_paragraph()
+        p_space.add_run(" ").font.size = Pt(10)
+
+    # Line 10: Project Name
+    p_project = doc.add_paragraph()
+    p_project.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # We use a specific font size for the title (24pt)
+    apply_styling(p_project, 'LTA AMMS', is_bold=True, font_size=24)
+
+    for _ in range(2):
+        p_space = doc.add_paragraph()
+        p_space.add_run(" ").font.size = Pt(10)
+
+    # Line: Report Name
+    p_tittle = doc.add_paragraph()
+    p_tittle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # We use a specific font size for the title (24pt)
+    apply_styling(p_tittle, 'Vulnerability Assessment Review\nFinal Report 2026', is_bold=True, font_size=18)
+
+    for _ in range(2):
+        p_space = doc.add_paragraph()
+        p_space.add_run(" ").font.size = Pt(10)
+
+    # Line: disclaimer Name
+    p_disclaimer = doc.add_paragraph()
+    p_disclaimer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # We use a specific font size for the title (24pt)
+    apply_styling(p_disclaimer, 'CONFIDENTIAL DOCUMENT', is_bold=True, font_size=12)
+
+    p_spacer = doc.add_paragraph()
+    p_spacer_format = p_spacer.paragraph_format
+    
+    # Adjust 250 to a higher/lower number to move the logo up or down.
+    # If it's still on Page 2, decrease 250 to 200.
+    p_spacer_format.space_before = Pt(120) 
+    p_spacer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # SECOND TO LAST LINE: Cert Logo
+    cert_logo_path = os.path.join(settings.BASE_DIR, 'static', 'images', 'cert.png')
+    if os.path.exists(cert_logo_path):
+        cert_run = p_spacer.add_run()
+        # Keep width at 1.5 as you have it to save vertical space
+        cert_run.add_picture(cert_logo_path, width=Inches(1.5))
+    else:
+        p_spacer.add_run(" ")
+
+    # LAST LINE: Footer Text
+    p_footer = doc.add_paragraph()
+    p_footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_footer.paragraph_format.space_after = Pt(0)
+    
+    # Using Font Size 8 as per your latest snippet to keep it compact
+    apply_styling(p_footer, 'WE ARE A CREST ACCREDITED ORGANIZATION FOR VULNERABILITY ASSESSMENT AND PENETRATION TESTING', is_bold=False, font_size=8)
+
+    # Force the break ONLY after this final line
+    doc.add_page_break()
+
+    # 2. Blank Page
+    doc.add_paragraph(" ")
+    doc.add_page_break()
+
+    # --- SECTION 2: REPORT BODY (Page 3 Onwards) ---
+    new_section = doc.add_section(WD_SECTION.NEW_PAGE)
+    new_section.header.is_linked_to_previous = False
+    
+    # 1. SETUP HEADER TABLE
+    header = new_section.header
+    # We create a 1x2 table
+    htable = header.add_table(1, 2, width=Inches(6.5))
+    
+    # FORCE TABLE TO BE 100% WIDTH OF THE MARGINS
+    htable.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    tbl = htable._tbl
+    tblPr = tbl.xpath('w:tblPr')[0]
+    tblW = OxmlElement('w:tblW')
+    tblW.set(qn('w:w'), '5000') # 5000 in 'pct' units is 100% width
+    tblW.set(qn('w:type'), 'pct')
+    tblPr.append(tblW)
+
+    # Left Cell: Title (Pinned to Left Corner)
+    h_left_cell = htable.cell(0, 0)
+    p_left = h_left_cell.paragraphs[0]
+    p_left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run_title = p_left.add_run(workspace.get('project_name', 'Security Assessment Report'))
+    run_title.font.name = 'Segoe UI'
+    run_title.font.size = Pt(9)
+
+    # Right Cell: Logo (Pinned to Right Corner)
+    h_right_cell = htable.cell(0, 1)
+    p_right = h_right_cell.paragraphs[0]
+    p_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT # <--- THIS PINS THE LOGO TO THE RIGHT CORNER
+    
+    logo_path = os.path.join(settings.BASE_DIR, 'static', 'images', 'logo.png')
+    if os.path.exists(logo_path):
+        run_logo = p_right.add_run()
+        run_logo.add_picture(logo_path, width=Inches(0.8))
+
+    # --- 2. SETUP FOOTER TABLE ---
+    footer = new_section.footer
+    ftable = footer.add_table(1, 2, width=Inches(6.5))
+    
+    # FORCE FOOTER TABLE TO 100% WIDTH
+    ftbl = ftable._tbl
+    ftblPr = ftbl.xpath('w:tblPr')[0]
+    ftblW = OxmlElement('w:tblW')
+    ftblW.set(qn('w:w'), '5000')
+    ftblW.set(qn('w:type'), 'pct')
+    ftblPr.append(ftblW)
+
+    # Left Cell: Copyright (Pinned to Left Corner)
+    f_left_cell = ftable.cell(0, 0)
+    p_f_left = f_left_cell.paragraphs[0]
+    p_f_left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run_rights = p_f_left.add_run("Copyright © 2026. All Rights Reserved.")
+    run_rights.font.name = 'Segoe UI'
+    run_rights.font.size = Pt(8)
+
+    # Right Cell: Page (Pinned to Right Corner)
+    f_right_cell = ftable.cell(0, 1)
+    p_f_right = f_right_cell.paragraphs[0]
+    p_f_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT # <--- THIS PINS PAGE # TO THE RIGHT CORNER
+    run_p = p_f_right.add_run("Page ")
+    run_p.font.name = 'Segoe UI'
+    run_p.font.size = Pt(9)
+    
+    # Dynamic Page Number (Helper function used here)
+    add_page_number_to_run(p_f_right.add_run())
+
+    # --- SECTION 4: FINDINGS ---
+    grouped = df.groupby('Name', sort=False)
+    for i, (name, group) in enumerate(grouped, 1):
+        doc.add_heading(f'4.1.{i} {name}', level=2)
+        table = doc.add_table(rows=20, cols=3)
+        table.style = 'Table Grid'
+        unique_group = group.drop_duplicates(subset=['Host', 'Port'])
+
+        # R1-2: Meta Info
+        for idx, txt in enumerate(['Vulnerability ID', 'Severity', 'Vulnerability Status']):
+            cell = table.rows[0].cells[idx]
+            set_cell_background(cell, "2B5797")
+            apply_styling(cell.paragraphs[0], txt, is_bold=True, font_size=10, color=RGBColor(255, 255, 255))
+        
+        apply_styling(table.rows[1].cells[0].paragraphs[0], f'VA_{i}')
+        apply_styling(table.rows[1].cells[1].paragraphs[0], str(group.iloc[0].get('Severity', 'N/A')).upper())
+        status_val = 'Open' if 'Open' in group['Vulnerability Status'].values else 'Fixed & Closed'
+        apply_styling(table.rows[1].cells[2].paragraphs[0], status_val)
+
+        # R3-4: Vulnerability Name
+        format_full_width_header(table, 2, "Vulnerability")
+        apply_styling(format_full_width_value(table, 3).paragraphs[0], name)
+
+        # R5-6: Affected Servers
+        format_full_width_header(table, 4, "Affected servers")
+        p6 = format_full_width_value(table, 5).paragraphs[0]
+        status_order = ['Fixed & Closed', 'Open']
+        found_statuses = [s for s in status_order if s in unique_group['Vulnerability Status'].values]
+        
+        for s_idx, status_type in enumerate(found_statuses):
+            sub = unique_group[unique_group['Vulnerability Status'] == status_type]
+            apply_styling(p6, "Current Status: ", is_bold=True)
+            apply_styling(p6, f"{status_type}")
+            ips = ", ".join([f"{r.Host}(Port:{r.Port})" for r in sub.itertuples()])
+            apply_styling(p6, "\nServers: ", is_bold=True)
+            apply_styling(p6, f"{ips}\n")
+            if s_idx < len(found_statuses) - 1:
+                p6.add_run("\n") 
+
+        # R7-8: Synopsis
+        format_full_width_header(table, 6, "Issue Synopsis")
+        apply_styling(format_full_width_value(table, 7).paragraphs[0], group['Synopsis'].iloc[0] if not group['Synopsis'].empty else "N/A")
+
+        # R9-10: Findings (With Plugin Output Fix & Italic Note)
+        format_full_width_header(table, 8, "Findings")
+        p10 = format_full_width_value(table, 9).paragraphs[0]
+        findings_df = group.dropna(subset=['Plugin Output']).drop_duplicates(subset=['Plugin Output'])[:3]
+        
+        for idx, (_, row_data) in enumerate(findings_df.iterrows(), 1):
+            apply_styling(p10, f"Sample Finding Output-{idx}: ", is_bold=True)
+            apply_styling(p10, f"{row_data['Host']}(Port:{row_data['Port']})\n")
+            apply_styling(p10, f"{row_data['Plugin Output']}\n")
+            if idx < len(findings_df):
+                p10.add_run("\n")
+        
+        # --- ITALIC NOTE ---
+        note_text = "\nNote: More than 3 outputs present, hence restricted to 3 output samples. For more details, refer to HTML"
+        note_run = apply_styling(p10, note_text, is_bold=False)
+        note_run.italic = True
+
+        # R11-12: Description
+        format_full_width_header(table, 10, "Description")
+        apply_styling(format_full_width_value(table, 11).paragraphs[0], group['Description'].iloc[0])
+
+        # R13-14: Recommendation
+        format_full_width_header(table, 12, "Recommendation")
+        apply_styling(format_full_width_value(table, 13).paragraphs[0], group['Solution'].iloc[0])
+
+        # R15 - R20: Comments & Artifacts
+        comment_sets = [
+            (14, 15, "Customer comments", "Customer Comment", ["Customer Comments", "Customer Comment"]),
+            (16, 17, "Opensource comment", "Opensource Comment", ["Opensource Comments", "Opensource Comment"]),
+            (18, 19, "Artifacts", "Artifact", ["Artefacts", "artifacts", "Artifact", "Artefact"])
+        ]
+
+        for h_idx, v_idx, h_title, prefix, possible_cols in comment_sets:
+            format_full_width_header(table, h_idx, h_title)
+            p_val = format_full_width_value(table, v_idx).paragraphs[0]
+            actual_col = next((c for c in possible_cols if c in group.columns), None)
+            
+            if actual_col:
+                unique_vals = group[actual_col].dropna().unique()
+                for v_sub_idx, val in enumerate(unique_vals):
+                    sub_srv = unique_group[unique_group[actual_col] == val]
+                    apply_styling(p_val, f"{prefix}: ", is_bold=True)
+                    apply_styling(p_val, f"{val}")
+                    ips = ", ".join([f"{r.Host}(Port:{r.Port})" for r in sub_srv.itertuples()])
+                    apply_styling(p_val, "\nServers: ", is_bold=True)
+                    apply_styling(p_val, f"{ips}\n")
+                    if v_sub_idx < len(unique_vals) - 1:
+                        p_val.add_run("\n") 
+
+        doc.add_paragraph() 
+
+    save_path = os.path.join(settings.MEDIA_ROOT, "Final_VA_Report.docx")
+    doc.save(save_path)
+    return "Final_VA_Report.docx"

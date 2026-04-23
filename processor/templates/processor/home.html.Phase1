@@ -1,0 +1,100 @@
+{% extends "processor/base.html" %}
+
+{% block content %}
+<style>
+    .dashboard-container {
+        max-width: 1000px;
+        margin: 40px auto;
+        text-align: center;
+    }
+    .dashboard-title {
+        font-weight: 700;
+        color: var(--primary-dark);
+        font-size: 32px;
+        margin-bottom: 10px;
+    }
+    .dashboard-subtitle {
+        color: #6C757D;
+        font-size: 15px;
+        margin-bottom: 50px;
+    }
+    .module-card {
+        background: var(--white);
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+        padding: 30px;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+    }
+    .module-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    .module-number {
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--primary-dark);
+        margin-bottom: 12px;
+    }
+    .module-text {
+        font-size: 14px;
+        color: #6C757D;
+        line-height: 1.6;
+        margin-bottom: 25px;
+        flex-grow: 1;
+    }
+    .btn-launch {
+        background-color: #F8FAFC;
+        border: 1px solid var(--border-muted);
+        color: var(--primary-dark);
+        font-weight: 600;
+        font-size: 13px;
+        width: 100%;
+        padding: 10px;
+        text-align: center;
+        text-decoration: none;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+    .btn-launch:hover {
+        background-color: var(--accent-blue);
+        color: white;
+        border-color: var(--accent-blue);
+    }
+</style>
+
+<div class="dashboard-container">
+    <h1 class="dashboard-title">Operations Dashboard</h1>
+    <p class="dashboard-subtitle">Select a module below to process your vulnerability scan data.</p>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="module-card">
+                <div class="module-number">1. Create Interim Report</div>
+                <p class="module-text">Merge raw Nessus CSVs into the initial Pre-Remediation report with formatted styling.</p>
+                <a href="{% url 'interim_pre' %}" class="btn-launch">Launch Engine</a>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="module-card">
+                <div class="module-number">2. Post-Remediation Interim</div>
+                <p class="module-text">Upload Pre & Post reports to compare data and update vulnerability status automatically.</p>
+                <a href="{% url 'interim_post' %}" class="btn-launch">Start Comparison</a>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="module-card">
+                <div class="module-number">3. Create Final Word Report</div>
+                <p class="module-text">Generate a professional .docx final report with findings grouped by unique name.</p>
+                <a href="{% url 'word_report' %}" class="btn-launch">Export Word</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

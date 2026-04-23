@@ -1,0 +1,87 @@
+from django.shortcuts import render
+from django.core.files.storage import FileSystemStorage
+import pandas as pd
+import os
+from .utils_interim import generate_interim_report
+from .utils_word import generate_final_word_report
+
+def home(request):
+    """Serve the landing page."""
+    return render(request, 'processor/home.html')
+
+def interim_pre(request):
+    """Phase 1: Generate Initial Report with Two Buttons."""
+    context = {}
+    if request.method == 'POST' and request.FILES.getlist('scans'):
+        fs = FileSystemStorage()
+        files = [fs.save(f.name, f) for f in request.FILES.getlist('scans')]
+        
+        # Determine which button was pressed
+        action = request.POST.get('action')
+        
+        # Execute your 120-line baseline logic
+        excel_name, csv_name = generate_interim_report(files, prefix="Pre_Remediation")
+        
+        if action == 'generate_excel':
+            context['download_url'] = fs.url(excel_name)
+            context['file_type'] = 'Excel'
+        elif action == 'generate_csv':
+            context['download_url'] = fs.url(csv_name)
+            context['file_type'] = 'CSV'
+            
+    return render(request, 'processor/upload_pre.html', context)
+
+def interim_post(request):
+    """Phase 2: Compare Pre and Post Scans."""
+    if request.method == 'POST' and request.FILES.get('pre_file'):
+        fs = FileSystemStorage()
+        pre_path = fs.path(fs.save("pre_base.csv", request.FILES['pre_file']))
+        post_files = [fs.save(f.name, f) for f in request.FILES.getlist('post_scans')]
+        
+        # Consolidate post scans using baseline
+        _, post_csv = generate_interim_report(post_files, prefix="Post_Temp")
+        
+        df_pre = pd.read_csv(pre_path)
+        df_post = pd.read_csv(fs.path(post_csv))
+        
+        # Cast to string individually to fix previous attribute error
+        df_pre['uid'] = df_pre['Name'].astype(str) + df_pre['Host'].astype(str) + df_pre['Port'].astype(str)
+        df_post['uid'] = df_post['Name'].astype(str) + df_post['Host'].astype(str) + df_post['Port'].astype(str)
+        
+        post_uids = set(df_post['uid'].unique())
+        df_pre['Vulnerability Status'] = df_pre['uid'].apply(lambda x: "Open" if x in post_uids else "Fixed & Closed")
+        
+        pre_uids = set(df_pre['uid'].unique())
+        new_findings = df_post[~df_post['uid'].isin(pre_uids)].copy()
+        if not new_findings.empty:
+            new_findings['Vulnerability Status'] = "Open"
+            final_df = pd.concat([df_pre, new_findings], ignore_index=True).drop(columns=['uid'])
+        else:
+            final_df = df_pre.drop(columns=['uid'])
+        
+        # Save results and re-run baseline logic for styling/pivots
+        csv_name = "Consolidated_Post_Report.csv"
+        final_df.to_csv(fs.path(csv_name), index=False)
+        excel_name, _ = generate_interim_report([csv_name], prefix="Consolidated_Post")
+
+        return render(request, 'processor/upload_post.html', {
+            'csv_url': fs.url(csv_name),
+            'excel_url': fs.url(excel_name)
+        })
+    return render(request, 'processor/upload_post.html')
+
+def word_report(request):
+    """Phase 3: Generate Word Report."""
+    if request.method == 'POST' and request.FILES.get('report_file'):
+        fs = FileSystemStorage()
+        uploaded_file = request.FILES.get('report_file')
+        file_path = fs.path(fs.save(uploaded_file.name, uploaded_file))
+        
+        if uploaded_file.name.endswith('.xlsx'):
+            df = pd.read_excel(file_path, sheet_name='InterimReport_VA')
+        else:
+            df = pd.read_csv(file_path)
+            
+        word_doc = generate_final_word_report(df)
+        return render(request, 'processor/upload_word.html', {'word_url': fs.url(word_doc)})
+    return render(request, 'processor/upload_word.html')

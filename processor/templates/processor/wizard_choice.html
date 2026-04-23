@@ -1,0 +1,11 @@
+{% extends "processor/base.html" %}
+{% block content %}
+<div class="wizard-card text-center">
+    <h2 class="fw-bold mb-4">Final Report Decision</h2>
+    <p class="text-muted mb-5">Does this assessment have a <strong>Post-Remediation</strong> report?</p>
+    <div class="d-flex gap-3">
+        <a href="{% url 'word_report' %}" class="btn flex-fill py-3" style="background: var(--csv-grey); color: white; text-decoration: none;">No, Pre-Remediation Only</a>
+        <a href="{% url 'interim_post_reused' %}" class="btn flex-fill py-3" style="background: var(--accent-blue); color: white; text-decoration: none;">Yes, Upload Post-Remediation</a>
+    </div>
+</div>
+{% endblock %}

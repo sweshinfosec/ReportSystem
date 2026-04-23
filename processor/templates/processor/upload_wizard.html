@@ -1,0 +1,37 @@
+{% extends "processor/base.html" %}
+{% block content %}
+<style>
+    .wizard-card { background: white; border-radius: 12px; padding: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); max-width: 750px; margin: 40px auto; }
+    .upload-box { border: 2px dashed #B0C0D0; background: #F8FAFC; padding: 40px; border-radius: 8px; text-align: center; margin-bottom: 25px; }
+    .btn-next { background: var(--primary-dark); color: white; padding: 14px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block; margin-top: 20px; }
+</style>
+
+<div class="wizard-card">
+    <div class="mb-4">
+        <h2 class="fw-bold">{% if step == 1 %}Step 1: Pre-Remediation{% elif step == 3 %}Step 2: Post-Remediation{% else %}Step 3: Comparison{% endif %}</h2>
+    </div>
+
+    {% if step == 1 or step == 3 %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="upload-box">
+            <input type="file" name="{% if step == 1 %}scans{% else %}post_scans{% endif %}" multiple class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary w-100 py-3 fw-bold" style="background: var(--accent-blue);">PROCESS SCANS</button>
+    </form>
+    {% endif %}
+
+    {% if excel_url %}
+    <div class="mt-5 p-4" style="background: #E6FFEC; border-radius: 8px; border: 1px solid #2F9C58;">
+        <div class="d-flex gap-3">
+            <a href="{{ excel_url }}" class="btn flex-fill fw-bold" style="background: var(--excel-green); color: white; padding: 12px;">DOWNLOAD EXCEL</a>
+            <a href="{{ csv_url }}" class="btn flex-fill fw-bold" style="background: var(--csv-grey); color: white; padding: 12px;">DOWNLOAD CSV</a>
+        </div>
+        <div class="text-center mt-4">
+            {% if show_proceed %}<a href="{% url 'wizard_choice' %}" class="btn-next">Proceed to Final Process <i class="fas fa-arrow-right"></i></a>
+            {% elif show_compare_btn %}<a href="{% url 'compare_engine' %}" class="btn-next" style="background: #E67E22;">Check Vulnerability Status</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

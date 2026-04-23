@@ -1,0 +1,105 @@
+{% extends "processor/base.html" %}
+
+{% block content %}
+<style>
+    .dashboard-container {
+        max-width: 1000px;
+        margin: 40px auto;
+        text-align: center;
+    }
+    .dashboard-title {
+        font-weight: 700;
+        color: var(--primary-dark);
+        font-size: 32px;
+        margin-bottom: 10px;
+    }
+    .dashboard-subtitle {
+        color: #6C757D;
+        font-size: 15px;
+        margin-bottom: 50px;
+    }
+    .module-card {
+        background: var(--white);
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+        padding: 35px 30px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .module-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    .service-icon {
+        font-size: 40px;
+        color: var(--accent-blue);
+        margin-bottom: 20px;
+    }
+    .module-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--primary-dark);
+        margin-bottom: 12px;
+    }
+    .module-text {
+        font-size: 13px;
+        color: #6C757D;
+        line-height: 1.6;
+        margin-bottom: 25px;
+        flex-grow: 1;
+    }
+    .btn-open {
+        background-color: var(--accent-blue);
+        color: white;
+        font-weight: 600;
+        font-size: 13px;
+        width: 100%;
+        padding: 12px;
+        text-decoration: none;
+        border-radius: 6px;
+        transition: opacity 0.2s;
+    }
+    .btn-open:hover { opacity: 0.9; color: white; }
+    
+    .coming-soon { opacity: 0.6; filter: grayscale(1); cursor: not-allowed; }
+</style>
+
+<div class="dashboard-container">
+    <h1 class="dashboard-title">Operations Dashboard</h1>
+    <p class="dashboard-subtitle">Select a service below to access specific reporting modules.</p>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="module-card">
+                <div class="service-icon"><i class="fas fa-shield-virus"></i></div>
+                <div class="module-name">VA Reports</div>
+                <p class="module-text">Vulnerability Assessment modules including Interim, Comparison, and Word reporting engines.</p>
+                <a href="{% url 'reporting_dashboard' %}" class="btn-open">Open VA Service</a>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="module-card coming-soon">
+                <div class="service-icon"><i class="fas fa-server"></i></div>
+                <div class="module-name">HCR Reports</div>
+                <p class="module-text">Host Configuration Review modules for server hardening and compliance audit reports.</p>
+                <a href="#" class="btn-open btn-secondary">Coming Soon</a>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="module-card coming-soon">
+                <div class="service-icon"><i class="fas fa-globe"></i></div>
+                <div class="module-name">WPT Reports</div>
+                <p class="module-text">Web Penetration Testing modules for DAST and SAST vulnerability report generation.</p>
+                <a href="#" class="btn-open btn-secondary">Coming Soon</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

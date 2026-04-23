@@ -1,0 +1,120 @@
+import pandas as pd
+import os
+import socket
+import struct
+from django.conf import settings
+
+def ip_to_numeric(ip):
+    """Helper to convert IP strings to integers for accurate sorting."""
+    try:
+        return struct.unpack("!L", socket.inet_aton(str(ip).strip()))[0]
+    except:
+        return 4294967295
+
+def generate_interim_report(filename_list, prefix="Pre_Remediation"):
+    base_path = settings.MEDIA_ROOT
+    all_dfs = []
+
+    for filename in filename_list:
+        file_path = os.path.join(base_path, filename)
+        try:
+            temp = pd.read_csv(file_path, low_memory=False, on_bad_lines='skip')
+            all_dfs.append(temp)
+        except:
+            continue
+    
+    if not all_dfs: return None, None
+    df = pd.concat(all_dfs, ignore_index=True).drop_duplicates()
+
+    # 1. Rename 'Risk' to 'Severity'
+    if 'Risk' in df.columns:
+        df = df.rename(columns={'Risk': 'Severity'})
+    
+    # 2. Filter valid severities
+    df = df.dropna(subset=['Severity', 'Host', 'Name'])
+    df['Severity'] = df['Severity'].astype(str).str.strip()
+    sev_order = ["Critical", "High", "Medium", "Low"]
+    df = df[df['Severity'].isin(sev_order)]
+
+    # 3. Multi-level Sort
+    # Level 1: Severity (Order: Critical to Low)
+    # Level 2: Name (A to Z)
+    # Level 3: CVSS v3.0 Base Score (10 down to 0)
+    # Level 4: Host (Numeric IP sort low to high)
+    df['ip_sort_key'] = df['Host'].apply(ip_to_numeric)
+    df['Severity'] = pd.Categorical(df['Severity'], categories=sev_order, ordered=True)
+    df = df.sort_values(
+        by=['Severity', 'Name', 'CVSS v3.0 Base Score', 'ip_sort_key'], 
+        ascending=[True, True, False, True]
+    )
+    df = df.drop(columns=['ip_sort_key'])
+
+    # 4. Limit and Order Columns
+    # Includes new status and comment columns
+    final_cols = [
+        "Plugin ID", "CVE", "CVSS v3.0 Base Score", "Host", "Protocol", 
+        "Port", "Name", "Synopsis", "Description", "Solution", 
+        "Plugin Output", "Severity", "Vulnerability Status",
+        "Opensource Comments", "Customer Comments", "Remarks"
+    ]
+    
+    # Ensure all columns exist, add missing as empty
+    for col in final_cols:
+        if col not in df.columns:
+            df[col] = ""
+
+    df_interim = df[final_cols].copy()
+
+    # --- SAVE EXCEL VERSION ---
+    excel_name = f"{prefix}_Report.xlsx"
+    output_path = os.path.join(base_path, excel_name)
+    csv_name = f"{prefix}_Report.csv"
+    df_interim.to_csv(os.path.join(base_path, csv_name), index=False)
+
+    # Prepare Pivot Tables
+    pivot_host = pd.crosstab(df['Host'], df['Severity']).reindex(columns=sev_order, fill_value=0).reset_index()
+    pivot_findings = pd.crosstab(df['Name'], df['Severity']).reindex(columns=sev_order, fill_value=0).reset_index()
+
+    with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
+        # Sheet 1: InterimReport_VA
+        df_interim.to_excel(writer, index=False, sheet_name='InterimReport_VA')
+        
+        # Sheet 2: Summary
+        pivot_host.to_excel(writer, sheet_name='Summary', startcol=1, startrow=1, index=False)
+        pivot_findings.to_excel(writer, sheet_name='Summary', startcol=1, startrow=len(pivot_host) + 5, index=False)
+
+        workbook = writer.book
+        main_sheet = writer.sheets['InterimReport_VA']
+        summary_sheet = writer.sheets['Summary']
+        
+        # Formatting
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'border': 1})
+        text_fmt = workbook.add_format({'text_wrap': True, 'valign': 'top', 'border': 1})
+        
+        # Severity Colors
+        color_map = {
+            'Critical': '#FF0000', # Red
+            'High':     '#FF9900', # Orange
+            'Medium':   '#FFFF00', # Yellow
+            'Low':      '#00B050'  # Green
+        }
+
+        # Apply Header Style
+        for i, col in enumerate(df_interim.columns):
+            main_sheet.write(0, i, col, header_fmt)
+            width = 40 if col in ["Description", "Solution", "Plugin Output", "Synopsis"] else 15
+            main_sheet.set_column(i, i, width, text_fmt)
+
+        # Apply Severity Cell Colors
+        sev_idx = df_interim.columns.get_loc("Severity")
+        for sev_level, color_code in color_map.items():
+            main_sheet.conditional_format(1, sev_idx, len(df_interim), sev_idx, {
+                'type': 'cell', 'criteria': '==', 'value': f'"{sev_level}"',
+                'format': workbook.add_format({'bg_color': color_code, 'font_color': 'black'})
+            })
+
+        # Add Table Design to Summary
+        summary_sheet.write(0, 1, "Vulnerability Count by Host", workbook.add_format({'bold': True}))
+        summary_sheet.write(len(pivot_host) + 4, 1, "Unique Findings (Uniq Findings)", workbook.add_format({'bold': True}))
+
+    return excel_name, csv_name

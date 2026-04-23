@@ -1,0 +1,135 @@
+{% extends "processor/base.html" %}
+
+{% block content %}
+<style>
+    .report-generator-card {
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        background: #ffffff;
+        max-width: 700px;
+        margin: 40px auto;
+        padding: 50px;
+    }
+    .card-title-main {
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #1a2a3a;
+        font-size: 24px;
+        letter-spacing: 0.5px;
+        text-align: center;
+    }
+    .card-subtitle-main {
+        color: #6C757D;
+        font-size: 14px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    .upload-area-box {
+        border: 1px dashed #B0C0D0;
+        border-radius: 6px;
+        padding: 30px;
+        margin-bottom: 20px;
+        background-color: #F8FAFC;
+    }
+    .btn-process-main {
+        background-color: #5D9CEC !important;
+        border: none !important;
+        color: white !important;
+        font-weight: 600;
+        border-radius: 6px;
+        width: 100%;
+        padding: 12px;
+        margin-top: 10px;
+    }
+
+    /* FIXED DOWNLOAD BUTTONS */
+    .btn-download-excel {
+        background-color: #38761D !important; /* Dark Green */
+        color: #ffffff !important;           /* Force White Text */
+        font-weight: 700 !important;
+        border-radius: 8px;
+        padding: 15px 25px;
+        text-decoration: none !important;
+        display: block;
+        transition: transform 0.2s;
+    }
+    .btn-download-csv {
+        background-color: #4E5154 !important;  /* Dark Grey */
+        color: #ffffff !important;            /* Force White Text */
+        font-weight: 700 !important;
+        border-radius: 8px;
+        padding: 15px 25px;
+        text-decoration: none !important;
+        display: block;
+        transition: transform 0.2s;
+    }
+    .btn-download-excel:hover, .btn-download-csv:hover {
+        transform: translateY(-3px);
+        opacity: 0.9;
+    }
+    .ready-badge {
+        background-color: #E6FFEC;
+        color: #2F9C58;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        display: inline-block;
+        margin-bottom: 20px;
+    }
+</style>
+
+<div class="report-generator-card">
+    <h1 class="card-title-main">Post-Remediation Comparison</h1>
+    <p class="card-subtitle-main">Compare Pre-Remediation data with new scans to update status</p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="upload-area-box">
+            <label class="fw-bold mb-1 small">Step 1: Upload Pre-Remediation Base (CSV)</label>
+            <input type="file" name="pre_file" class="form-control form-control-sm" required>
+        </div>
+
+        <div class="upload-area-box">
+            <label class="fw-bold mb-1 small">Step 2: Upload Post-Remediation Scans (CSVs)</label>
+            <input type="file" name="post_scans" multiple class="form-control form-control-sm" required>
+        </div>
+
+        <button type="submit" class="btn btn-process-main">
+            <i class="fas fa-sync-alt me-2"></i>Start Comparison Engine
+        </button>
+    </form>
+
+    {% if excel_url or csv_url %}
+    <hr class="my-4">
+    <div class="text-center">
+        <div class="ready-badge">
+            <i class="fas fa-check me-2"></i>CONSOLIDATED REPORT READY
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% if excel_url %}
+        <div class="col-md-6">
+            <a href="{{ excel_url }}" class="btn-download-excel text-center">
+                <i class="fas fa-file-excel mb-1"></i><br>
+                DOWNLOAD EXCEL
+                <span class="d-block small fw-normal opacity-75">(.xlsx format)</span>
+            </a>
+        </div>
+        {% endif %}
+
+        {% if csv_url %}
+        <div class="col-md-6">
+            <a href="{{ csv_url }}" class="btn-download-csv text-center">
+                <i class="fas fa-file-csv mb-1"></i><br>
+                DOWNLOAD CSV
+                <span class="d-block small fw-normal opacity-75">(.csv format)</span>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+import pandas as pd
+import os
+import socket
+import struct
+from django.conf import settings
+
+def ip_to_int(ip):
+    """Numeric IP sorting: 10.0.0.2 before 10.0.0.10."""
+    try:
+        return struct.unpack("!L", socket.inet_aton(str(ip).strip()))[0]
+    except:
+        return 0
+
+def compare_pre_post_scans(pre_file_path, post_file_path, output_excel_name):
+    base_path = settings.MEDIA_ROOT
+    output_path = os.path.join(base_path, output_excel_name)
+    
+    # 1. Load Data
+    df_pre = pd.read_csv(pre_file_path)
+    df_post = pd.read_csv(post_file_path)
+
+    # 2. Pre-Processing
+    def preprocess(df):
+        if 'Risk' in df.columns:
+            df.rename(columns={'Risk': 'Severity'}, inplace=True)
+        df = df.loc[:, ~df.columns.duplicated()].copy()
+        df['Severity'] = df['Severity'].astype(str).str.strip()
+        df = df[~df['Severity'].str.contains('None|none|^$', na=True)].copy()
+        df['uid'] = df['Name'].astype(str).str.strip() + \
+                    df['Host'].astype(str).str.strip() + \
+                    df['Port'].astype(str).str.strip()
+        return df
+
+    df_pre = preprocess(df_pre)
+    df_post = preprocess(df_post)
+
+    # 3. Logic & Combined Data
+    severity_map = df_post.set_index('uid')['Severity'].to_dict()
+    post_uids = set(df_post['uid'].unique())
+
+    df_pre['Vulnerability Status'] = df_pre['uid'].apply(lambda x: "Open" if x in post_uids else "Closed")
+    df_pre['Severity'] = df_pre.apply(lambda row: severity_map.get(row['uid'], row['Severity']), axis=1)
+
+    pre_uids_set = set(df_pre['uid'].unique())
+    new_findings = df_post[~df_post['uid'].isin(pre_uids_set)].copy()
+    if not new_findings.empty:
+        new_findings['Vulnerability Status'] = "Open"
+        final_df = pd.concat([df_pre, new_findings], ignore_index=True)
+    else:
+        final_df = df_pre.copy()
+
+    for col in ['Opensource Comments', 'Customer Comments', 'Remarks']:
+        final_df[col] = ""
+
+    # 4. Trimming & Sorting
+    base_cols = ['Plugin ID', 'CVE', 'CVSS v3.0 Base Score', 'Host', 'Protocol', 'Port', 'Name', 'Synopsis', 'Description', 'Solution', 'Plugin Output', 'Severity']
+    sev_order = ['Critical', 'High', 'Medium', 'Low']
+
+    def clean_df(df, is_final=False):
+        df['ip_int'] = df['Host'].apply(ip_to_int)
+        df = df.sort_values(by=['Name', 'CVSS v3.0 Base Score', 'ip_int'], ascending=[True, False, True])
+        cols = base_cols.copy()
+        if is_final:
+            cols.append('Vulnerability Status')
+            cols.extend(['Opensource Comments', 'Customer Comments', 'Remarks'])
+        return df[[c for c in cols if c in df.columns]].copy()
+
+    trimmed_r1 = clean_df(df_pre)
+    trimmed_r2 = clean_df(df_post)
+    trimmed_final = clean_df(final_df, is_final=True)
+
+    # 5. Pivot Calculation
+    pivot_host = pd.crosstab(trimmed_final['Host'], trimmed_final['Severity']).reindex(columns=sev_order, fill_value=0).reset_index()
+    pivot_findings = pd.crosstab(trimmed_final['Name'], trimmed_final['Severity']).reindex(columns=sev_order, fill_value=0).reset_index()
+
+    # 6. Save Excel
+    with pd.ExcelWriter(output_path, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
+        trimmed_r1.to_excel(writer, sheet_name='InterimReport_VA_R1', index=False)
+        trimmed_r2.to_excel(writer, sheet_name='InterimReport_VA_R2', index=False)
+        trimmed_final.to_excel(writer, sheet_name='InterimReport_VA', index=False)
+        
+        workbook = writer.book
+        main_sheet = writer.sheets['InterimReport_VA']
+        # Create Summary sheet from scratch (no raw data)
+        summary_sheet = workbook.add_worksheet('Summary')
+        summary_sheet.hide_gridlines(2)
+        
+        # Formats
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+        title_fmt = workbook.add_format({'bold': True, 'font_size': 14, 'font_color': '#2B5797'})
+        color_fmts = {
+            'Critical': workbook.add_format({'bg_color': '#8B0000', 'font_color': '#FFFFFF'}),
+            'High':     workbook.add_format({'bg_color': '#FF0000', 'font_color': '#FFFFFF'}),
+            'Medium':   workbook.add_format({'bg_color': '#FFC000'}),
+            'Low':      workbook.add_format({'bg_color': '#FFFF00'})
+        }
+
+        # Apply Styling to Main Tab
+        for i, col in enumerate(trimmed_final.columns):
+            main_sheet.write(0, i, col, header_fmt)
+        sev_idx = trimmed_final.columns.get_loc("Severity")
+        for val, fmt in color_fmts.items():
+            main_sheet.conditional_format(1, sev_idx, len(trimmed_final), sev_idx, {'type': 'cell', 'criteria': 'equal to', 'value': f'"{val}"', 'format': fmt})
+
+        # --- Summary Tab (Pivots at Column P) ---
+        target_col = 15
+        summary_sheet.write(1, target_col, 'Vulnerability Count by Host', title_fmt)
+        summary_sheet.add_table(2, target_col, len(pivot_host) + 2, target_col + len(pivot_host.columns) - 1, {
+            'data': pivot_host.values.tolist(),
+            'columns': [{'header': c} for c in pivot_host.columns],
+            'style': 'Table Style Medium 2'
+        })
+
+        start_row = len(pivot_host) + 6
+        summary_sheet.write(start_row - 1, target_col, 'Unique Findings Summary', title_fmt)
+        summary_sheet.add_table(start_row, target_col, start_row + len(pivot_findings), target_col + len(pivot_findings.columns) - 1, {
+            'data': pivot_findings.values.tolist(),
+            'columns': [{'header': c} for c in pivot_findings.columns],
+            'style': 'Table Style Medium 2'
+        })
+        
+        main_sheet.set_column('A:Z', 18)
+        summary_sheet.set_column(target_col, target_col + 10, 25)
+
+    return output_excel_name

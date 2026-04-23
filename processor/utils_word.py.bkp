@@ -1,0 +1,148 @@
+import os
+import pandas as pd
+from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from django.conf import settings
+
+def generate_final_word_report(df):
+    """
+    Generates a full VA report based on SampleReport.docx [cite: 3-30].
+    The Logo starts at Line 8 and the Title starts at Line 10.
+    """
+    doc = Document()
+
+    # --- 1. COVER PAGE ---
+    
+    # Push content down by 7 lines so the Logo starts on Line 8
+    for _ in range(7):
+        doc.add_paragraph()
+
+    # Logo Placement (Line 8)
+    logo_path = os.path.join(settings.BASE_DIR, 'static', 'images', 'logo.png')
+    if os.path.exists(logo_path):
+        logo_para = doc.add_paragraph()
+        logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_logo = logo_para.add_run()
+        run_logo.add_picture(logo_path, width=Inches(2.5))
+    
+    # Add 1 line so Title starts on Line 10 (Line 8 Logo + Line 9 Spacer = Line 10 Title)
+    doc.add_paragraph()
+
+    # Title Section (Line 10)
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run('LTA IT801A\nSAP\n')
+    run.bold = True
+    run.font.size = Pt(24)
+    run.font.color.rgb = RGBColor(26, 42, 58)
+
+    p2 = doc.add_paragraph()
+    p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run2 = p2.add_run('Vulnerability Assessment Review – Final Report\nQuarter 2 2026 (PRD & UAT)\n')
+    run2.font.size = Pt(16)
+
+    p3 = doc.add_paragraph()
+    p3.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run3 = p3.add_run('CONFIDENTIAL DOCUMENT')
+    run3.bold = True
+    run3.font.size = Pt(12)
+
+    doc.add_page_break()
+
+    # --- 2. SECTION 1: PURPOSE ---
+    doc.add_heading('1. PURPOSE OF THIS DOCUMENT', level=1)
+    doc.add_paragraph(
+        "This document outlines the results of the vulnerability assessment conducted by Opensource "
+        "for the operating systems involved in the LTA IT801A Project for Quarter 2 2026."
+    )
+
+    # --- 3. SECTION 2: OVERVIEW ---
+    doc.add_heading('2. SECURITY ANALYSIS OVERVIEW', level=1)
+    doc.add_paragraph(
+        "The scope of this Security Test covers the vulnerability assessment scan for Windows and Linux servers "
+        "in the PRD and UAT environment of LTA IT801A project."
+    )
+
+    # Section 2.3: Severity Ratings
+    doc.add_heading('2.3 VULNERABILITY CATEGORIZATION GUIDELINES', level=2)
+    doc.add_paragraph("Vulnerability Severity Ratings are based on CVSSv3 ratings provided by Nessus Scanner:")
+    sev_table = doc.add_table(rows=5, cols=2)
+    sev_table.style = 'Table Grid'
+    sev_data = [
+        ('Severity', 'Rating'),
+        ('CRITICAL', '9.0 to 10.0'),
+        ('HIGH', '7.0 to 8.9'),
+        ('MEDIUM', '4.0 to 6.9'),
+        ('LOW', '0.1 to 3.9')
+    ]
+    for i, (sev, rat) in enumerate(sev_data):
+        sev_table.rows[i].cells[0].text = sev
+        sev_table.rows[i].cells[1].text = rat
+
+    # Section 2.4: Status
+    doc.add_heading('2.4 VULNERABILITY ASSESSMENT SCAN STATUS', level=2)
+    stat_table = doc.add_table(rows=4, cols=2)
+    stat_table.style = 'Table Grid'
+    stat_data = [
+        ('Status', 'Description'),
+        ('Open', 'Vulnerability is not fixed.'),
+        ('Fixed & Closed', 'Mitigated and validated as fixed.'),
+        ('Seeking Risk Acceptance', 'Approved for Risk Register with justification.')
+    ]
+    for i, (st, ds) in enumerate(stat_data):
+        stat_table.rows[i].cells[0].text = st
+        stat_table.rows[i].cells[1].text = ds
+
+    doc.add_page_break()
+
+    # --- 4. SECTION 3: SUMMARY ---
+    doc.add_heading('3. VULNERABILITY ASSESSMENT SCAN SUMMARY', level=1)
+    doc.add_paragraph("Summary tables categorized by severity for each IP in scope.")
+    doc.add_page_break()
+
+    # --- 5. SECTION 4: DETAILED REPORT (DYNAMIC) ---
+    doc.add_heading('4. DETAILED VULNERABILITY ASSESSMENT SCAN REPORT', level=1)
+
+    # Grouping by Name to combine all affected IPs into one section
+    grouped = df.groupby('Name', sort=False)
+    
+    for i, (name, group) in enumerate(grouped, 1):
+        first = group.iloc[0]
+        doc.add_heading(f'4.1.{i} {name}', level=2)
+        
+        table = doc.add_table(rows=6, cols=2)
+        table.style = 'Table Grid'
+        
+        table.rows[0].cells[0].text = 'Vulnerability ID'
+        table.rows[0].cells[1].text = f'VA_{i}'
+        
+        table.rows[1].cells[0].text = 'Severity'
+        table.rows[1].cells[1].text = str(first.get('Severity', 'N/A'))
+        
+        # Combine unique hosts for the Affected Systems field
+        all_hosts = ", ".join(map(str, group['Host'].unique()))
+        table.rows[2].cells[0].text = 'Affected Systems'
+        table.rows[2].cells[1].text = all_hosts
+        
+        table.rows[3].cells[0].text = 'Description'
+        table.rows[3].cells[1].text = str(first.get('Description', 'N/A'))
+        
+        table.rows[4].cells[0].text = 'Recommendation'
+        table.rows[4].cells[1].text = str(first.get('Solution', 'N/A'))
+        
+        status_val = first.get('Vulnerability Status', 'Open')
+        table.rows[5].cells[0].text = 'Status'
+        table.rows[5].cells[1].text = str(status_val)
+        
+        doc.add_paragraph() 
+
+    # --- 6. SAVE DOCUMENT ---
+    word_name = "Final_VA_Report.docx"
+    save_path = os.path.join(settings.MEDIA_ROOT, word_name)
+    
+    if not os.path.exists(settings.MEDIA_ROOT):
+        os.makedirs(settings.MEDIA_ROOT)
+        
+    doc.save(save_path)
+    return word_name

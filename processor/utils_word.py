@@ -1,0 +1,1010 @@
+import os
+from docx import Document
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import qn, nsdecls
+from django.conf import settings
+import time
+
+
+# --- 1. HELPER FUNCTIONS ---
+
+def set_cell_background(cell, fill):
+    """Sets cell background color via HEX."""
+    shading_elm = OxmlElement('w:shd')
+    shading_elm.set(qn('w:fill'), fill)
+    cell._tc.get_or_add_tcPr().append(shading_elm)
+
+def set_cell_shading(cell, color):
+    """Helper to set cell background color (e.g., '0F365A' for Blue)."""
+    shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color}"/>')
+    cell._tc.get_or_add_tcPr().append(shading_elm)
+
+def apply_styling(paragraph, text="", is_bold=False, font_size=10, color=None):
+    """Applies Segoe UI styling and strictly removes paragraph spacing."""
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1.0
+    
+    run = paragraph.add_run(text)
+    run.font.name = 'Segoe UI'
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Segoe UI')
+    run.font.size = Pt(font_size)
+    run.bold = is_bold
+    if color:
+        run.font.color.rgb = color
+    return run
+
+def add_page_number_field(run):
+    """Adds the dynamic PAGE field to a run."""
+    f1 = OxmlElement('w:fldChar'); f1.set(qn('w:fldCharType'), 'begin')
+    it = OxmlElement('w:instrText'); it.set(qn('xml:space'), 'preserve'); it.text = "PAGE"
+    f2 = OxmlElement('w:fldChar'); f2.set(qn('w:fldCharType'), 'end')
+    run._r.append(f1); run._r.append(it); run._r.append(f2)
+
+
+    # Define the blue color from your screenshot
+SECTION_BLUE = RGBColor(54, 95, 145)
+
+def format_full_width_header(table, row_idx, text):
+    """Merges cells and formats as dark blue header."""
+    row = table.rows[row_idx]
+    # Adjust merge if your table has more/less than 3 columns
+    merged_cell = row.cells[0].merge(row.cells[1]).merge(row.cells[2])
+    set_cell_background(merged_cell, "0F365A")
+    # Table headers usually stay white for contrast
+    apply_styling(merged_cell.paragraphs[0], text, is_bold=True, font_size=10, color=RGBColor(255, 255, 255))
+    merged_cell.paragraphs[0].alignment = 1 # Center
+    return merged_cell
+
+def format_full_width_value(table, row_idx):
+    """Merges cells for data content."""
+    row = table.rows[row_idx]
+    return row.cells[0].merge(row.cells[1]).merge(row.cells[2])
+
+# --- 2. MAIN GENERATOR ---
+
+def generate_final_word_report(df, workspace=None):
+    if workspace is None:
+        workspace = {}
+    
+    doc = Document()
+
+    element_update = OxmlElement('w:updateFields')
+    element_update.set(qn('w:val'), 'true')
+    doc.settings.element.append(element_update)
+    
+    # Global Style Setup
+    style = doc.styles['Normal']
+    style.font.name = 'Segoe UI'
+    style.font.size = Pt(10)
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.line_spacing = 1.0
+
+    # --- COVER PAGE (Page 1) ---
+    for _ in range(8): doc.add_paragraph(" ")
+
+    logo_path = os.path.join(settings.BASE_DIR, 'static', 'images', 'logo.png')
+    if os.path.exists(logo_path):
+        logo_para = doc.add_paragraph()
+        logo_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_para.add_run().add_picture(logo_path, width=Inches(3.5))
+
+    for _ in range(7): doc.add_paragraph(" ")
+
+    p_project = doc.add_paragraph()
+    p_project.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(p_project, workspace.get('project_name', 'LTA AMMS'), is_bold=True, font_size=24)
+
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(p_title, '\nVulnerability Assessment Review\nFinal Report 2026', is_bold=True, font_size=18)
+
+    p_disclaimer = doc.add_paragraph()
+    p_disclaimer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(p_disclaimer, '\nCONFIDENTIAL DOCUMENT', is_bold=True, font_size=12)
+
+    p_spacer = doc.add_paragraph()
+    p_spacer.paragraph_format.space_before = Pt(120)
+    p_spacer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    cert_path = os.path.join(settings.BASE_DIR, 'static', 'images', 'cert.png')
+    if os.path.exists(cert_path):
+        p_spacer.add_run().add_picture(cert_path, width=Inches(1.5))
+
+    p_footer = doc.add_paragraph()
+    p_footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(p_footer, 'WE ARE A CREST ACCREDITED ORGANIZATION FOR VULNERABILITY ASSESSMENT AND PENETRATION TESTING', is_bold=False, font_size=8)
+
+    doc.add_page_break()
+
+    # --- BLANK PAGE (Page 2) ---
+    blank_p = doc.add_paragraph()
+    blank_run = blank_p.add_run(" ") 
+    blank_run.font.size = Pt(1)
+    doc.add_page_break()
+
+    # --- REPORT BODY (Page 3 Onwards) ---
+    new_section = doc.add_section(WD_SECTION.NEW_PAGE)
+    new_section.header.is_linked_to_previous = False
+    new_section.footer.is_linked_to_previous = False
+
+    # Force 1-inch margins and calculate right corner (8.5" - 2" = 6.5")
+    new_section.left_margin = Inches(1.0)
+    new_section.right_margin = Inches(1.0)
+    RIGHT_CORNER = Inches(6.5)
+
+    # --- HEADER: Title (Left) | Logo (Right) ---
+    header_para = new_section.header.paragraphs[0]
+    header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # 2 = WD_TAB_ALIGN.RIGHT (Fixed crash by using integer)
+    header_para.paragraph_format.tab_stops.add_tab_stop(RIGHT_CORNER, 2)
+
+    run_h_left = apply_styling(header_para, workspace.get('project_name', 'Security Assessment Report'), is_bold=False, font_size=9)
+    header_para.add_run("\t")
+    if os.path.exists(logo_path):
+        header_para.add_run().add_picture(logo_path, width=Inches(1.0))
+
+    # --- FOOTER: Rights (Left) | Page (Right) ---
+    footer_para = new_section.footer.paragraphs[0]
+    footer_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    footer_para.paragraph_format.tab_stops.add_tab_stop(RIGHT_CORNER, 2)
+    
+    apply_styling(footer_para, "All Rights Reserved © 2026", is_bold=False, font_size=9)
+    footer_para.add_run("\tPage ")
+    add_page_number_field(footer_para.add_run())
+
+
+    # --- TABLE: VULNERABILITY ASSESSMENT SCAN REPORT ---
+    doc.add_heading('VULNERABILITY ASSESSMENT SCAN REPORT', level=1)
+    t1 = doc.add_table(rows=3, cols=2)
+    t1.style = 'Table Grid'
+    t1.autofit = False  # CRITICAL: Prevents Word from resizing columns automatically
+
+    t1_data = [
+        ("Document Title", f"{workspace.get('project_name', 'LTA AMMS')} VA Review Final Report Q1-2026"),
+        ("Document File Name", f"{workspace.get('project_name', 'LTA AMMS')} VA Review Final Report Q1-2026"),
+        ("Document Purpose", f"{workspace.get('project_name', 'LTA AMMS')} Review showing details of each vulnerability and the current status on the LTA-AMMS project servers.")
+    ]
+
+    for i, (l, v) in enumerate(t1_data):
+        row = t1.rows[i]
+        
+        # Set specific widths for the columns
+        row.cells[0].width = Inches(2.0)  # Smaller first column
+        row.cells[1].width = Inches(4.5)  # Larger second column
+        
+        row.cells[0].text = l
+        row.cells[1].text = v
+        
+        set_cell_shading(row.cells[0], "0F365A")
+        for p in row.cells[0].paragraphs:
+            for r in p.runs:
+                r.font.color.rgb = RGBColor(255, 255, 255)
+                r.bold = True
+
+    doc.add_paragraph("\n")
+
+    # --- TABLE: SECURITY TEAM DETAILS ---
+    doc.add_heading('SECURITY TEAM DETAILS', level=1)
+    t2 = doc.add_table(rows=4, cols=2)
+    t2.style = 'Table Grid'
+    t2.autofit = False
+
+    team = [
+        ("Full Name", "Certifications"),
+        ("Penigalapati Vinaya Kumar", "*Offensive Security Certified Professional (OSCP) (Certificate ID: OS-101-53426)\n*CREST Registered Penetration Tester (CREST CRT) (CREST ID: 1269386536)"),
+        ("Domatoti Vinod Kumar", "*Offensive Security Certified Professional (OSCP) (OS-101-025977)\n*Offensive Security Web Assessor (OSWA) Certificate ID: OSWA-28308\n*Offensive Security Wireless Professional (OSWP) License No: OS-BWA-15192\n*Certified Cybersecurity from (ISC)² - (Certification Number: 1154738)"),
+        ("Pranatarthi Ravindra Kumar", "*Offensive Security Certified Professional (OSCP)\n*ISACA: Certified Information Security Auditor (CISA)\n*ISACA: Certified Information Security Manager (CISM)")
+    ]
+
+    for i, (name, cert) in enumerate(team):
+        row = t2.rows[i]
+        
+        # Set widths (matching the first table for consistency)
+        row.cells[0].width = Inches(2.0)
+        row.cells[1].width = Inches(4.5)
+        
+        row.cells[0].text = name
+        row.cells[1].text = cert
+        
+        if i == 0:
+            set_cell_shading(row.cells[0], "0F365A")
+            set_cell_shading(row.cells[1], "0F365A")
+            for r in row.cells[0].paragraphs[0].runs + row.cells[1].paragraphs[0].runs:
+                r.font.color.rgb = RGBColor(255, 255, 255)
+        
+ #       if i == 2: # Green row for Vinod
+ #           set_cell_shading(row.cells[0], "EBF1DE")
+ #           set_cell_shading(row.cells[1], "EBF1DE")
+
+  # --- TABLE: DOCUMENT REVIEW ---
+    doc.add_heading('DOCUMENT REVIEW', level=1)
+    
+    # 11 rows: (5 blocks of Name/Date) + 1 row for Submission Date
+    t3 = doc.add_table(rows=11, cols=4)
+    t3.style = 'Table Grid'
+    t3.autofit = False
+
+    # Set column widths to match previous tables
+    # Col 0: Label (1.2"), Col 1: Name/Date (2.8"), Col 2: Sig Label (0.8"), Col 3: Sig Box (1.7")
+    widths = [Inches(1.2), Inches(2.8), Inches(0.8), Inches(1.7)]
+    for row in t3.rows:
+        for idx, width in enumerate(widths):
+            row.cells[idx].width = width
+
+    review_data = [
+        ("Prepared by\n(Opensource):", "Domatoti Vinod Kumar"),
+        ("Reviewed by\n(Opensource):", "Ankur Dayal"),
+        ("Reviewed by\n(NTTD):", ""),
+        ("Accepted by\n(ITCD):", ""),
+        ("Accepted by\n(System Owner):", "")
+    ]
+
+    # Loop through the 5 main blocks (Rows 0-9)
+    for i, (label, name) in enumerate(review_data):
+        base_row = i * 2
+        
+        # 1. Labels (Col 0) - Dark Blue
+        cell_label = t3.cell(base_row, 0)
+        cell_date_label = t3.cell(base_row + 1, 0)
+        
+        cell_label.text = label
+        cell_date_label.text = "Date:"
+        
+        set_cell_shading(cell_label, "0F365A ")
+        set_cell_shading(cell_date_label, "0F365A")
+        
+        for cell in [cell_label, cell_date_label]:
+            for p in cell.paragraphs:
+                for r in p.runs:
+                    r.font.color.rgb = RGBColor(255, 255, 255)
+                    r.font.size = Pt(8)
+                    r.bold = True
+
+        # 2. Values (Col 1)
+        t3.cell(base_row, 1).text = name
+
+        # 3. Signature Column (Col 2) - Merged & Dark Blue
+        sig_label_cell = t3.cell(base_row, 2).merge(t3.cell(base_row + 1, 2))
+        sig_label_cell.text = "Signature:"
+        set_cell_shading(sig_label_cell, "0F365A")
+        sig_label_cell.vertical_alignment = 1 # Center
+        for p in sig_label_cell.paragraphs:
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for r in p.runs:
+                r.font.color.rgb = RGBColor(255, 255, 255)
+                r.font.size = Pt(8)
+                r.bold = True
+
+        # 4. Signature Box (Col 3) - Merged
+        t3.cell(base_row, 3).merge(t3.cell(base_row + 1, 3))
+
+    # --- Last Row: Submission Date ---
+    sub_row = t3.rows[10]
+    sub_row.cells[0].text = "Submission\nDate:"
+    set_cell_shading(sub_row.cells[0], "0F365A")
+    for r in sub_row.cells[0].paragraphs[0].runs:
+        r.font.color.rgb = RGBColor(255, 255, 255)
+        r.font.size = Pt(8)
+        r.bold = True
+    
+    # Merge the remaining cells for the date value
+    merged_date_val = sub_row.cells[1].merge(sub_row.cells[2]).merge(sub_row.cells[3])
+    merged_date_val.text = "27 Mar 2026"
+
+    # --- FOOTNOTE NOTE ---
+    note_para = doc.add_paragraph()
+    note_run = note_para.add_run("Note: This report will be valid for a duration of 30 Days from the report submission.")
+    note_run.font.name = 'Segoe UI'
+    note_run.font.size = Pt(10)
+    note_run.italic = True
+
+
+# --- VERSION HISTORY ---
+    doc.add_heading('VERSION HISTORY', level=1)
+
+    # 5 rows total (Header + 1 filled row + 3 empty rows)
+    v_table = doc.add_table(rows=5, cols=4)
+    v_table.style = 'Table Grid'
+    v_table.autofit = False
+
+    # Define widths for the 4 columns
+    v_widths = [Inches(1.1), Inches(0.8), Inches(1.1), Inches(3.5)]
+    for row in v_table.rows:
+        for idx, width in enumerate(v_widths):
+            row.cells[idx].width = width
+
+    # Header Row
+    v_headers = ["Date", "Version", "Author", "Description / Changes"]
+    for i, txt in enumerate(v_headers):
+        cell = v_table.rows[0].cells[i]
+        cell.text = txt
+        set_cell_shading(cell, "0F365A") # Dark Blue
+        for p in cell.paragraphs:
+            for r in p.runs:
+                r.font.color.rgb = RGBColor(255, 255, 255)
+                r.font.size = Pt(9)
+                r.bold = True
+
+    # Initial Release Data (Row 1)
+    v_row1 = v_table.rows[1].cells
+    v_row1[0].text = "27 Mar 2026"
+    v_row1[1].text = "1.0"
+    v_row1[2].text = "Opensource"
+    v_row1[3].text = "Initial Release"
+
+    # Set font for all data rows to Segoe UI 9pt
+    for row in v_table.rows[1:]:
+        for cell in row.cells:
+            for p in cell.paragraphs:
+                for r in p.runs:
+                    r.font.name = 'Segoe UI'
+                    r.font.size = Pt(9)
+
+    doc.add_paragraph("\n")
+
+    # --- 4. TABLE OF CONTENTS (Page 4) ---
+    doc.add_page_break()
+    doc.add_heading('Table of Contents', level=1)
+    toc_p = doc.add_paragraph()
+    run = toc_p.add_run()
+    f1 = OxmlElement('w:fldChar'); f1.set(qn('w:fldCharType'), 'begin'); run._r.append(f1)
+    it = OxmlElement('w:instrText'); it.set(qn('xml:space'), 'preserve'); it.text = 'TOC \\o "1-3" \\h \\z \\u'; run._r.append(it)
+    f2 = OxmlElement('w:fldChar'); f2.set(qn('w:fldCharType'), 'separate'); run._r.append(f2)
+    f3 = OxmlElement('w:fldChar'); f3.set(qn('w:fldCharType'), 'end'); run._r.append(f3)
+
+    # --- 3. TABLE OF CONTENTS ---
+   # doc.add_heading('Table of Contents', level=1)
+   # toc_p = doc.add_paragraph()
+   # run = toc_p.add_run()
+    #fld1 = OxmlElement('w:fldChar'); fld1.set(qn('w:fldCharType'), 'begin'); run._r.append(fld1)
+   # instr = OxmlElement('w:instrText'); instr.set(qn('xml:space'), 'preserve'); instr.text = 'TOC \\o "1-3" \\h \\z \\u'; run._r.append(instr)
+   #fld2 = OxmlElement('w:fldChar'); fld2.set(qn('w:fldCharType'), 'separate'); run._r.append(fld2)
+   # fld3 = OxmlElement('w:fldChar'); fld3.set(qn('w:fldCharType'), 'end'); run._r.append(fld3)
+    doc.add_page_break()
+    
+
+    # Sections 1-3
+    # --- 2. SECURITY ANALYSIS OVERVIEW (Page 4/5) ---
+    h2 = doc.add_heading('1      PURPOSE OF THIS DOCUMENT', level=1)
+    for run in h2.runs: run.font.name = 'Segoe UI'; run.font.size = Pt(14)
+
+    apply_styling(doc.add_paragraph(), 
+        "his document tabulates the results of the vulnerability assessment conducted for NTT for its client LTA AMMS Singapore. The tests are performed using Nessus Scan for Vulnerability Assessment Scan in Operating System as well as manual validation. ")
+    doc.add_page_break()
+
+
+# --- 2. SECURITY ANALYSIS OVERVIEW (Page 4/5) ---
+    
+    h2 = doc.add_heading('2      SECURITY ANALYSIS OVERVIEW', level=1)
+    for run in h2.runs: run.font.name = 'Segoe UI'; run.font.size = Pt(14)
+
+    apply_styling(doc.add_paragraph(), 
+        "Opensource has been engaged to conduct vulnerability assessment scan for Operating System involved in "
+        "the LTA-AMMS Project. The scope of this Security Test covers the vulnerability assessment scan for Windows servers.")
+
+    # 2.1 TESTING LANDSCAPE
+    doc.add_heading('2.1      TESTING LANDSCAPE', level=2)
+    
+    apply_styling(doc.add_paragraph(), 
+        "This security assessment covers the VA scan for Servers in the PROD, UAT, DEV and MGMT environment of "
+        "LTA-AMMS project. The assessment was carried out with credentialed access to run the scanner to find the "
+        "vulnerabilities on the mentioned servers.")
+
+    # 2.2 VULNERABILITY ASSESSMENT SCAN
+    doc.add_heading('2.2      VULNERABILITY ASSESSMENT SCAN', level=2)
+    apply_styling(doc.add_paragraph(), 
+        "Vulnerability Assessment Scan is a non-intrusive approach that serves to produce a list of vulnerabilities and "
+        "the vulnerability status. A combination of automated and manual scan is performed on the servers, with the "
+        "objective to identify the vulnerabilities that are present in the environment.")
+
+    # 2.3 VULNERABILITY CATEGORIZATION GUIDELINES
+    doc.add_heading('2.3      VULNERABILITY CATEGORIZATION GUIDELINES', level=2)
+    apply_styling(doc.add_paragraph(), 
+        "Vulnerability Severity Ratings are globally based on CVSS (Common Vulnerability Scoring System) ratings, "
+        "which are provided by the Nessus Scanner.")
+
+    # --- CVSS RATINGS TABLE ---
+    t_cvss = doc.add_table(rows=5, cols=2)
+    t_cvss.style = 'Table Grid'
+    t_cvss.autofit = False
+    # Set widths: Col 0 (1.5"), Col 1 (5.0")
+    for row in t_cvss.rows:
+        row.cells[0].width = Inches(1.5)
+        row.cells[1].width = Inches(5.0)
+
+    cvss_data = [
+        ("Severity", "Rating"),
+        ("CRITICAL", "The plugin's highest vulnerability CVSSv3 score is between 9.0 to 10.0."),
+        ("HIGH", "The plugin's highest vulnerability CVSSv3 score is between 7.0 to 8.9."),
+        ("MEDIUM", "The plugin's highest vulnerability CVSSv3 score is between 4.0 to 6.9."),
+        ("LOW", "The plugin's highest vulnerability CVSSv3 score is between 0.1 to 3.9.")
+    ]
+
+    for i, (sev, rat) in enumerate(cvss_data):
+        row = t_cvss.rows[i]
+        row.cells[0].text = sev
+        row.cells[1].text = rat
+        if i == 0:
+            set_cell_shading(row.cells[0], "0F365A")
+            set_cell_shading(row.cells[1], "0F365A")
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    for r in p.runs: r.font.color.rgb = RGBColor(255, 255, 255); r.bold = True
+        else:
+            for p in row.cells[0].paragraphs: p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Caption for Table
+    caption = doc.add_paragraph()
+    caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(caption, "Table-2.3.1: Nessus CVSS Ratings", is_bold=True, font_size=9)
+
+    doc.add_paragraph("VA Scanner Details:", style='Normal').bold = True
+
+    # --- VA SCANNER DETAILS TABLE ---
+    t_scan = doc.add_table(rows=5, cols=2)
+    t_scan.style = 'Table Grid'
+    t_scan.autofit = False
+    
+    scan_details = [
+        ("Tool Used", "Nessus Professional"),
+        ("Nessus version", "10.8.4"),
+        ("Plugin feed version", "202602181602"),
+        ("Scan Type", "VA Credential Scan"),
+        ("Final Round Scanned", "25 Mar 2026")
+    ]
+
+    for i, (label, val) in enumerate(scan_details):
+        row = t_scan.rows[i]
+        row.cells[0].width = Inches(1.8)
+        row.cells[1].width = Inches(4.7)
+        row.cells[0].text = label
+        row.cells[1].text = val
+        set_cell_shading(row.cells[0], "0F365A")
+        for r in row.cells[0].paragraphs[0].runs:
+            r.font.color.rgb = RGBColor(255, 255, 255)
+            r.bold = True
+    
+    # Caption for Table
+    caption = doc.add_paragraph()
+    caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(caption, "Table-2.3.2: VA Scanner details", is_bold=True, font_size=9)
+
+    doc.add_page_break()
+# --- 2.4 VULNERABILITY ASSESSMENT SCAN STATUS ---
+    doc.add_heading('2.4      VULNERABILITY ASSESSMENT SCAN STATUS', level=2)
+    
+    apply_styling(doc.add_paragraph(), 
+        "VA Scan status is provided based on the current settings at the time of scan or manual validation. "
+        "Please refer the below table for the status used in this VA Scan report.")
+
+    doc.add_paragraph("Vulnerability Status:", style='Normal').bold = True
+
+    # Create Table (4 rows, 2 columns)
+    t_status = doc.add_table(rows=4, cols=2)
+    t_status.style = 'Table Grid'
+    t_status.autofit = False
+    
+    # Set widths (Col 0: 2.0", Col 1: 4.5")
+    for row in t_status.rows:
+        row.cells[0].width = Inches(2.0)
+        row.cells[1].width = Inches(4.5)
+
+    # Header Row
+    h_row = t_status.rows[0]
+    h_row.cells[0].text = "Vulnerability Status"
+    h_row.cells[1].text = "Description"
+    set_cell_shading(h_row.cells[0], "0F365A")
+    set_cell_shading(h_row.cells[1], "0F365A")
+    for cell in h_row.cells:
+        for p in cell.paragraphs:
+            for r in p.runs:
+                r.font.color.rgb = RGBColor(255, 255, 255)
+                r.bold = True
+                r.font.size = Pt(10)
+
+    # Status Data with specific colors
+    status_definitions = [
+        ("Open", "The vulnerability status will be marked as Open when a vulnerability is not fixed. The Accenture team need to fix this and inform Opensource Security team for validation. Any Re-Opened vulnerabilities will also be marked as Open.", RGBColor(255, 0, 0)), # Red
+        ("Fixed & Closed", "The vulnerability status will be marked as Fixed when it is mitigated by Accenture team, and Opensource Security team has validated and confirmed that the vulnerability is Fixed.", RGBColor(0, 176, 80)), # Green
+        ("Seeking Risk Acceptance", "If a vulnerability cannot be fixed due to various reasons or if it is an expected business logic as per business requirements, it will be discussed, and the client should agree to add it to the Risk Register, then the status is marked as \"Seeking Risk Acceptance\". The Infra/Application Team should provide proper justification and supporting evidence for this and any further discussion or follow ups will be done from Risk Register.", RGBColor(0, 176, 240)) # Blue
+    ]
+
+    for i, (status, desc, color) in enumerate(status_definitions, 1):
+        row = t_status.rows[i]
+        
+        # Style the Status Column (Column 0) with specific colors
+        p0 = row.cells[0].paragraphs[0]
+        p0.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        run0 = p0.add_run(status)
+        run0.font.name = 'Segoe UI'
+        run0.font.size = Pt(10)
+        run0.font.color.rgb = color
+        run0.bold = True
+
+        # Style the Description Column (Column 1)
+        p1 = row.cells[1].paragraphs[0]
+        run1 = p1.add_run(desc)
+        run1.font.name = 'Segoe UI'
+        run1.font.size = Pt(9)
+
+    # Table Caption
+    cap_para = doc.add_paragraph()
+    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(cap_para, "Table-2.4.1: Vulnerability status used in the detailed VA Scan report.", is_bold=True, font_size=9)
+
+
+    # --- 3.1 VULNERABILITY ASSESSMENT SCAN SUMMARY ---
+    doc.add_heading('3.1      VULNERABILITY ASSESSMENT SCAN SUMMARY', level=2)
+    
+    apply_styling(doc.add_paragraph(), 
+        "The following table depicts the summary of total number of total vulnerabilities from the Round-1 & final Round of scan.")
+
+    # 17 columns: S.No(1), Server(1), Crit(3), High(3), Med(3), Low(3), Grand Total(3)
+    summary_table = doc.add_table(rows=2, cols=17)
+    summary_table.style = 'Table Grid'
+    summary_table.autofit = False
+
+    # Adjust widths to fit all 17 columns (Total printable width ~6.5-7.0 inches)
+    widths = [0.3, 1.0] + [0.4] * 15 
+    for i, w in enumerate(widths):
+        for row in summary_table.rows:
+            row.cells[i].width = Inches(w)
+
+    def style_header_cell(cell, text, color):
+        cell.text = text
+        set_cell_shading(cell, color)
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.runs[0]
+        run.font.color.rgb = RGBColor(255, 255, 255)
+        run.bold = True
+        run.font.size = Pt(8)
+
+    # Base Headers
+    summary_table.cell(0, 0).merge(summary_table.cell(1, 0))
+    style_header_cell(summary_table.cell(0, 0), "S.No", "0F365A")
+    summary_table.cell(0, 1).merge(summary_table.cell(1, 1))
+    style_header_cell(summary_table.cell(0, 1), "Server Details", "0F365A")
+
+    # Severity Group Headers
+    style_header_cell(summary_table.cell(0, 2).merge(summary_table.cell(0, 4)), "Critical", "C00000") 
+    style_header_cell(summary_table.cell(0, 5).merge(summary_table.cell(0, 7)), "High", "E46C0A")    
+    style_header_cell(summary_table.cell(0, 8).merge(summary_table.cell(0, 10)), "Medium", "FFC000") 
+    style_header_cell(summary_table.cell(0, 11).merge(summary_table.cell(0, 13)), "Low", "0070C0")
+    # NEW: Grand Total Header
+    style_header_cell(summary_table.cell(0, 14).merge(summary_table.cell(0, 16)), "Grand Total", "1F4E78") # Darker Navy Blue
+
+    # Sub-headers (Open, Fixed, Total)
+    sub_titles = ["Open", "Fixed", "Total"] * 5
+    for i, title in enumerate(sub_titles, 2):
+        cell = summary_table.cell(1, i)
+        cell.text = title
+        set_cell_shading(cell, "365F91")
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.runs[0]
+        run.font.size = Pt(7)
+        run.font.color.rgb = RGBColor(255, 255, 255)
+        if "Open" in title: run.font.color.rgb = RGBColor(255, 0, 0)
+        elif "Fixed" in title: run.font.color.rgb = RGBColor(0, 176, 80)
+
+    # --- DATA CALCULATION ---
+    hosts = df['Host'].unique()
+    severities = ['Critical', 'High', 'Medium', 'Low']
+    
+    # Track overall column totals for footer
+    col_totals = [0] * 15 # Index 0-14 for the 15 data columns
+
+    for idx, host in enumerate(hosts, 1):
+        row_cells = summary_table.add_row().cells
+        row_cells[0].text = str(idx)
+        row_cells[1].text = host
+        host_df = df[df['Host'] == host]
+        
+        row_open_sum = 0
+        row_fixed_sum = 0
+        
+        col_idx = 2
+        for sev in severities:
+            open_cnt = len(host_df[(host_df['Severity'].str.lower() == sev.lower()) & (host_df['Vulnerability Status'] == 'Open')])
+            fixed_cnt = len(host_df[(host_df['Severity'].str.lower() == sev.lower()) & (host_df['Vulnerability Status'] == 'Fixed & Closed')])
+            
+            total_cnt = open_cnt + fixed_cnt
+            row_cells[col_idx].text = str(open_cnt)
+            row_cells[col_idx+1].text = str(fixed_cnt)
+            row_cells[col_idx+2].text = str(total_cnt)
+            
+            # Update row sums for grand total
+            row_open_sum += open_cnt
+            row_fixed_sum += fixed_cnt
+            
+            # Update footer totals
+            col_totals[col_idx-2] += open_cnt
+            col_totals[col_idx-1] += fixed_cnt
+            col_totals[col_idx] += total_cnt
+            
+            col_idx += 3
+        
+        # Fill Grand Total for this row
+        row_cells[14].text = str(row_open_sum)
+        row_cells[15].text = str(row_fixed_sum)
+        row_cells[16].text = str(row_open_sum + row_fixed_sum)
+        
+        # Update grand total footer sums
+        col_totals[12] += row_open_sum
+        col_totals[13] += row_fixed_sum
+        col_totals[14] += (row_open_sum + row_fixed_sum)
+
+    # --- FOOTER ---
+    foot = summary_table.add_row().cells
+    foot[0].merge(foot[1])
+    foot[0].text = "Total Count"
+    foot[0].paragraphs[0].alignment = 1
+    
+    for i in range(15):
+        cell = foot[i+2]
+        cell.text = str(col_totals[i])
+        if cell.paragraphs[0].runs:
+            cell.paragraphs[0].runs[0].bold = True
+
+    cap = doc.add_paragraph()
+    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    apply_styling(cap, "Table-3.1.1: Vulnerability Assessment Scan Summary", is_bold=True, font_size=9)
+
+
+    # --- Data Processing: Unique Vulnerabilities ---
+  # --- VULNERABILITIES SUMMARY ---
+    # 1. Bold Title
+    p_sum_title = doc.add_paragraph()
+    run_sum_title = p_sum_title.add_run("Vulnerabilities Summary:")
+    run_sum_title.bold = True
+    run_sum_title.font.name = 'Segoe UI'
+    run_sum_title.font.size = Pt(11)
+
+    apply_styling(doc.add_paragraph(), 
+        "The table below displays the vulnerability names identified in the AMMS environment scan for Round 1 and "
+        "final Round, excluding any duplicate findings. The severity and vulnerability status have been updated based on "
+        "the final Round scan results.")
+
+    # 2. Data Processing (MOVE THIS ABOVE THE TABLE LOGIC)
+    unique_findings = df.drop_duplicates(subset=['Name']).copy()
+    severity_order = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3}
+    unique_findings['sev_rank'] = unique_findings['Severity'].map(severity_order).fillna(4)
+    unique_findings = unique_findings.sort_values('sev_rank')
+
+    # 3. Create Table
+    v_sum_table = doc.add_table(rows=1, cols=5)
+    v_sum_table.style = 'Table Grid'
+    v_sum_table.autofit = False
+    v_sum_table.allow_break_across_pages = True
+    
+    # Force Fixed Layout to prevent margin overflow
+    v_sum_table._element.xpath('./w:tblPr/w:tblLayout')[0].set(qn('w:type'), 'fixed')
+
+    # Total width = 6.5"
+    v_widths = [Inches(0.6), Inches(0.9), Inches(3.0), Inches(0.9), Inches(1.1)]
+
+    # 4. Header Row
+    v_headers = ["S.No", "Vulnerability ID", "Name of Vulnerability", "Severity", "Vulnerability Status"]
+    for i, txt in enumerate(v_headers):
+        cell = v_sum_table.rows[0].cells[i]
+        cell.width = v_widths[i] # Set width
+        cell.text = txt
+        set_cell_shading(cell, "0F365A")
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.runs[0]
+        run.font.color.rgb = RGBColor(255, 255, 255)
+        run.font.size = Pt(9)
+        run.bold = True
+
+    # 5. Fill Data Rows
+    for idx, (index, row_data) in enumerate(unique_findings.iterrows(), 1):
+        row = v_sum_table.add_row().cells
+        
+        # Apply fixed widths and vertical alignment to every row
+        for i, w in enumerate(v_widths):
+            row[i].width = w
+            row[i].vertical_alignment = 1 # 1 = Center
+
+        row[0].text = f"4.1.{idx}"
+        row[1].text = f"VA_{idx}"
+        row[2].text = str(row_data['Name'])
+        
+        sev_val = str(row_data['Severity'])
+        row[3].text = sev_val
+        row[4].text = str(row_data.get('Vulnerability Status', 'N/A'))
+
+        # Cell Formatting
+        for i in range(5):
+            if i != 2: # Center align everything except the name
+                row[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            for p in row[i].paragraphs:
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after = Pt(2)
+                for r in p.runs:
+                    r.font.name = 'Segoe UI'
+                    r.font.size = Pt(8.5)
+
+        # Severity Coloring
+        sev_p = row[3].paragraphs[0]
+        if sev_p.runs:
+            sev_run = sev_p.runs[0]
+            sev_clean = sev_val.lower()
+            if 'critical' in sev_clean or 'high' in sev_clean:
+                sev_run.font.color.rgb = RGBColor(255, 0, 0)
+            elif 'medium' in sev_clean:
+                sev_run.font.color.rgb = RGBColor(228, 108, 10)
+            elif 'low' in sev_clean:
+                sev_run.font.color.rgb = RGBColor(0, 112, 192)
+
+    # 6. Add Table Caption
+    cap_para = doc.add_paragraph()
+    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cap_run = cap_para.add_run(f"Table-3.1.2: Vulnerabilities Summary identified in {workspace.get('project_name', 'LTA AMMS')}")
+    cap_run.bold = True
+    cap_run.font.name = 'Segoe UI'
+    cap_run.font.size = Pt(9)
+
+    doc.add_paragraph("\n")
+
+    # --- 3.2 VA SCAN PROCESS ---
+    doc.add_heading('3.2      VA SCAN PROCESS', level=2)
+    
+    apply_styling(doc.add_paragraph(), "Here is the VA Scan process in brief.")
+
+    # List items from screenshot
+    process_steps = [
+        "Upon completion of the initial round of VA scan on the PROD, UAT, DEV and MGMT environment, "
+        "the Opensource security team disseminated both the Nessus HTML and prepared excel reports to the NTT team.",
+        
+        "The NTT team implemented the necessary fixes and requested that the Opensource security team "
+        "conduct a final round of VA Scan on the PROD, UAT, DEV and MGMT environment.",
+        
+        "Upon the completion of the final round of VA scans on the PROD, UAT, DEV and MGMT environment, "
+        "the Opensource security team disseminated both the Nessus HTML report and the prepared Excel report to the NTT team.",
+        
+        "The Opensource security team validated the vulnerabilities identified in the final round of VA scans, "
+        "updated the VA scan report, prepared a Word report, and shared both reports with NTT team."
+    ]
+
+    for i, step_text in enumerate(process_steps, 1):
+        # Create a paragraph for each list item
+        p = doc.add_paragraph()
+        p_format = p.paragraph_format
+        # Indent the list for a clean look (0.5 inch for the number + text)
+        p_format.left_indent = Inches(0.5)
+        p_format.first_line_indent = Inches(-0.25)
+        p_format.space_after = Pt(6) # Add small spacing between items
+
+        # Add the number and the text
+        run = p.add_run(f"{i}.    ")
+        run.font.name = 'Segoe UI'
+        run.font.size = Pt(10)
+        run.bold = False
+
+        run_text = p.add_run(step_text)
+        run_text.font.name = 'Segoe UI'
+        run_text.font.size = Pt(10)
+
+    doc.add_page_break()
+    # --- SECTION 4: FINDINGS ---
+
+    # --- 4. DETAILED VULNERABILITY ASSESSMENT SCAN REPORT Header ---
+    h2 = doc.add_heading('4      DETAILED VULNERABILITY ASSESSMENT SCAN REPORT', level=1)
+    for run in h2.runs: run.font.name = 'Segoe UI'; run.font.size = Pt(14)
+
+    
+
+    grouped = df.groupby('Name', sort=False)
+    for i, (name, group) in enumerate(grouped, 1):
+        doc.add_heading(f'4.1.{i} {name}', level=2)
+        table = doc.add_table(rows=20, cols=3)
+        table.style = 'Table Grid'
+        unique_group = group.drop_duplicates(subset=['Host', 'Port'])
+
+        # R1-2: Meta Info
+        for idx, txt in enumerate(['Vulnerability ID', 'Severity', 'Vulnerability Status']):
+            cell = table.rows[0].cells[idx]
+            set_cell_background(cell, "2B5797")
+            apply_styling(cell.paragraphs[0], txt, is_bold=True, font_size=10, color=RGBColor(255, 255, 255))
+        
+        apply_styling(table.rows[1].cells[0].paragraphs[0], f'VA_{i}')
+        apply_styling(table.rows[1].cells[1].paragraphs[0], str(group.iloc[0].get('Severity', 'N/A')).upper())
+ #       status_val = 'Open' if 'Open' in group['Vulnerability Status'].values else 'Fixed & Closed'
+        status_val = 'Fixed & Closed' if 'Fixed & Closed' in group['Vulnerability Status'].values else 'Open'
+        apply_styling(table.rows[1].cells[2].paragraphs[0], status_val)
+
+        # R3-4: Vulnerability Name
+        format_full_width_header(table, 2, "Vulnerability")
+        apply_styling(format_full_width_value(table, 3).paragraphs[0], name)
+
+        # R5-6: Affected Servers
+        format_full_width_header(table, 4, "Affected servers")
+        p6 = format_full_width_value(table, 5).paragraphs[0]
+        status_order = ['Fixed & Closed', 'Open']
+        found_statuses = [s for s in status_order if s in unique_group['Vulnerability Status'].values]
+        
+        for s_idx, status_type in enumerate(found_statuses):
+            sub = unique_group[unique_group['Vulnerability Status'] == status_type]
+            apply_styling(p6, "Current Status: ", is_bold=True)
+            apply_styling(p6, f"{status_type}")
+            ips = ", ".join([f"{r.Host}(Port:{r.Port})" for r in sub.itertuples()])
+            apply_styling(p6, "\nServers: ", is_bold=True)
+            apply_styling(p6, f"{ips}\n")
+            if s_idx < len(found_statuses) - 1:
+                p6.add_run("\n") 
+
+        # R7-8: Synopsis
+        format_full_width_header(table, 6, "Issue Synopsis")
+        apply_styling(format_full_width_value(table, 7).paragraphs[0], group['Synopsis'].iloc[0] if not group['Synopsis'].empty else "N/A")
+
+        # R9-10: Findings (With Plugin Output Fix & Italic Note)
+        format_full_width_header(table, 8, "Findings")
+        p10 = format_full_width_value(table, 9).paragraphs[0]
+        findings_df = group.dropna(subset=['Plugin Output']).drop_duplicates(subset=['Plugin Output'])[:3]
+        
+        for idx, (_, row_data) in enumerate(findings_df.iterrows(), 1):
+            apply_styling(p10, f"Sample Finding Output-{idx}: ", is_bold=True)
+            apply_styling(p10, f"{row_data['Host']}(Port:{row_data['Port']})\n")
+            apply_styling(p10, f"{row_data['Plugin Output']}\n")
+            if idx < len(findings_df):
+                p10.add_run("\n")
+        
+        # --- ITALIC NOTE ---
+        note_text = "\nNote: More than 3 outputs present, hence restricted to 3 output samples. For more details, refer to HTML"
+        note_run = apply_styling(p10, note_text, is_bold=False)
+        note_run.italic = True
+
+       # R11-12: Description
+        format_full_width_header(table, 10, "Description")
+        # iloc[0] used for common data; displays empty if nan
+        desc_val = str(group['Description'].iloc[0])
+        apply_styling(format_full_width_value(table, 11).paragraphs[0], "" if desc_val.lower() == 'nan' else desc_val)
+
+        # R13-14: Recommendation
+        format_full_width_header(table, 12, "Recommendation")
+        sol_val = str(group['Solution'].iloc[0])
+        apply_styling(format_full_width_value(table, 13).paragraphs[0], "" if sol_val.lower() == 'nan' else sol_val)
+
+        # R15 - R20: Comments & Artifacts
+        comment_sets = [
+            (14, 15, "Customer comments", "Customer Comment", ["Customer Comments", "Customer Comment"]),
+            (16, 17, "Opensource comment", "Opensource Comment", ["Opensource Comments", "Opensource Comment"]),
+            (18, 19, "Artifacts", "Artifact", ["Artefacts", "artifacts", "Artifact", "Artefact"])
+        ]
+
+        # Clean the group for logic but keep values empty strings
+        unique_group = group.fillna('') 
+
+        for h_idx, v_idx, h_title, prefix, possible_cols in comment_sets:
+            format_full_width_header(table, h_idx, h_title)
+            p_val = format_full_width_value(table, v_idx).paragraphs[0]
+            
+            # Find column case-insensitively
+            actual_col = next((col for col in group.columns if col.strip().lower() in [c.lower() for c in possible_cols]), None)
+            
+            if actual_col:
+                # Only grab values that are actually filled
+                unique_vals = [v for v in unique_group[actual_col].unique() if str(v).strip() != '']
+                
+                for v_sub_idx, val in enumerate(unique_vals):
+                    sub_srv = unique_group[unique_group[actual_col] == val]
+                    
+                    # Add prefix in bold, then the value
+                    apply_styling(p_val, f"{prefix}: ", is_bold=True)
+                    apply_styling(p_val, f"{val}")
+                    
+                    # Add Servers mapping
+                    ips = ", ".join([f"{r.Host}(Port:{r.Port})" for r in sub_srv.itertuples() if hasattr(r, 'Host')])
+                    apply_styling(p_val, "\nServers: ", is_bold=True)
+                    apply_styling(p_val, f"{ips}\n")
+                    
+                    if v_sub_idx < len(unique_vals) - 1:
+                        p_val.add_run("\n") 
+            else:
+                # If column doesn't exist, p_val remains blank
+                p_val.text = ""
+
+        doc.add_paragraph()
+
+
+    doc.add_page_break()
+
+    # --- 5	APPENDIX -A ---
+    # --- 5 APPENDIX -A ---
+    doc.add_page_break()
+    h5 = doc.add_heading('APPENDIX -A', level=1)
+    for run in h5.runs: 
+        run.font.name = 'Segoe UI'
+        run.font.size = Pt(14)
+
+    apply_styling(doc.add_paragraph(), "The following table contains the asset list and Nessus VA scan reports.")
+
+    # Create Table: 5 rows (Header + 4 items), 3 columns
+    app_table = doc.add_table(rows=5, cols=3)
+    app_table.style = 'Table Grid'
+    app_table.autofit = False
+    
+    # Force Fixed Layout to keep the table strictly within page margins
+    app_table._element.xpath('./w:tblPr/w:tblLayout')[0].set(qn('w:type'), 'fixed')
+
+    # Optimized Widths: S.No (0.4"), Description (3.05"), Artefacts (3.05")
+    v_widths = [Inches(0.4), Inches(3.05), Inches(3.05)]
+
+    # Header Row Styling
+    headers = ["S.No", "Description", "Artefacts"]
+    for i, txt in enumerate(headers):
+        cell = app_table.rows[0].cells[i]
+        cell.width = v_widths[i]
+        cell.text = txt
+        set_cell_shading(cell, "0F365A") 
+        p = cell.paragraphs[0]
+        p.alignment = 1 # Center
+        run = p.runs[0]
+        run.font.color.rgb = RGBColor(255, 255, 255)
+        run.bold = True
+        run.font.size = Pt(10)
+
+    # Content Data (Rows 2 & 3 are now just empty placeholders)
+    content_rows = [
+        ("1", "List of Servers and the IP address details"),
+        ("2", "VA Initial Round Scan Report"),
+        ("3", "VA Final Round Scan Report"),
+        ("4", "VA Scan results in Excel format")
+    ]
+
+    for idx, (sno, desc) in enumerate(content_rows, 1):
+        row = app_table.rows[idx].cells
+        
+        # Apply fixed widths to every row cell
+        for i, w in enumerate(v_widths):
+            row[i].width = w
+            row[i].vertical_alignment = 1 # Center everything vertically
+            
+        row[0].text = sno
+        row[1].text = desc
+        
+        # Artefacts cell (Col 2) is left blank for manual insertion
+        # We ensure it has a paragraph so you can click into it easily
+        p_art = row[2].paragraphs[0]
+        p_art.alignment = 1 
+        p_art.text = "" 
+
+    # Final Formatting Loop (Setting Row Heights/Spacing)
+    for row in app_table.rows[1:]:
+        # Set a minimum row height to make them look like "boxes" for icons
+        tr = row._tr
+        trPr = tr.get_or_add_trPr()
+        trHeight = OxmlElement('w:trHeight')
+        trHeight.set(qn('w:val'), "800") # approx 0.55 inches
+        trHeight.set(qn('w:hRule'), "atLeast")
+        trPr.append(trHeight)
+
+        for cell in row.cells:
+            for p in cell.paragraphs:
+                p.paragraph_format.space_before = Pt(10)
+                p.paragraph_format.space_after = Pt(10)
+                for r in p.runs:
+                    r.font.name = 'Segoe UI'
+                    r.font.size = Pt(10)
+
+    # Table Caption
+    cap = doc.add_paragraph()
+    cap.alignment = 1
+    apply_styling(cap, "Table-5.A: List of Artefacts", is_bold=True, font_size=9)
+
+
+    # Generate a unique filename using a timestamp
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    save_filename = f"VA_Report_{timestamp}.docx"
+
+    save_path = os.path.join(settings.MEDIA_ROOT, save_filename)
+    doc.save(save_path)
+    
+    return save_filename

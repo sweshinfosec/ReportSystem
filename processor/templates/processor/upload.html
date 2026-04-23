@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Scan Reporter | Dashboard</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #34495e;
+            --accent: #3498db;
+            --excel-green: #217346;
+            --csv-grey: #4e4e4e;
+            --success: #27ae60;
+            --bg: #f4f7f6;
+            --text: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            color: var(--primary);
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        header p {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .upload-section {
+            border: 2px dashed #cbd5e0;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            transition: border-color 0.3s;
+            background: #fafafa;
+        }
+
+        .upload-section:hover {
+            border-color: var(--accent);
+        }
+
+        .file-input-wrapper {
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            display: block;
+            margin: 10px auto;
+            font-size: 14px;
+        }
+
+        .btn-submit {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s;
+        }
+
+        .btn-submit:hover {
+            background-color: #2980b9;
+        }
+
+        .result-section {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+
+        .status-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: var(--success);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .download-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .download-link {
+            text-decoration: none;
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        .download-link:active {
+            transform: scale(0.98);
+        }
+
+        .excel { background-color: var(--excel-green); }
+        .csv { background-color: var(--csv-grey); }
+
+        .download-link:hover {
+            opacity: 0.9;
+        }
+
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 11px;
+            color: #bdc3c7;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Report Generator</h1>
+            <p>Merge multiple CSV scans into professional reports</p>
+        </header>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="upload-section">
+                <div class="file-input-wrapper">
+                    <strong>Choose Files</strong>
+                    <p style="font-size: 12px; color: #999;">Drag & Drop or click to select multiple CSVs</p>
+                    <input type="file" name="csv_files" multiple accept=".csv" required>
+                </div>
+                <button type="submit" class="btn-submit">Process & Merge Files</button>
+            </div>
+        </form>
+
+        {% if excel_url %}
+        <div class="result-section">
+            <div class="status-badge">✔ READY FOR DOWNLOAD</div>
+            <div class="download-group">
+                <a href="{{ excel_url }}" download class="download-link excel">
+                    DOWNLOAD EXCEL<br><span style="font-size: 10px; font-weight: normal;">(.xlsx format)</span>
+                </a>
+                <a href="{{ csv_url }}" download class="download-link csv">
+                    DOWNLOAD CSV<br><span style="font-size: 10px; font-weight: normal;">(.csv format)</span>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <footer>
+            Vulnerability Assessment Reporting System &copy; 2026
+        </footer>
+    </div>
+
+</body>
+</html>

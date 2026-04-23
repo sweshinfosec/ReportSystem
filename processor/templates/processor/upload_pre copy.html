@@ -1,0 +1,188 @@
+{% extends "processor/base.html" %}
+
+{% block content %}
+<style>
+    /* 1. Page Background */
+    body {
+        background-color: #F0F2F5 !important; /* The light grey-blue background */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* 2. Main Card Styling */
+    .report-generator-card {
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08); /* Soft shadow */
+        background: #FFFFFF;
+        max-width: 650px;
+        margin: 50px auto; /* Center on page */
+        padding: 50px;
+        border: none;
+    }
+
+    /* 3. Typography (Captilize 'Report Generator' as requested) */
+    .card-title-main {
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #1A2A3A;
+        font-size: 26px;
+        letter-spacing: 0.5px;
+    }
+    .card-subtitle-main {
+        color: #6C757D;
+        font-weight: 400;
+        font-size: 14px;
+        margin-bottom: 30px;
+    }
+
+    /* 4. Upload Area (The dashed box) */
+    .upload-area-box {
+        border: 1px dashed #B0C0D0; /* Dashed border color */
+        border-radius: 6px;
+        padding: 40px;
+        margin-bottom: 25px;
+        background-color: #F8FAFC;
+        text-align: center;
+    }
+    .upload-area-box label.fw-bold {
+        font-size: 16px;
+        color: #1A2A3A;
+    }
+    .upload-area-box .form-text {
+        font-size: 12px;
+        color: #8A9AAB;
+        margin-bottom: 15px;
+    }
+
+    /* 5. Custom Buttons */
+    /* Blue Generate Button */
+    .btn-generate-main {
+        background-color: #5D9CEC !important;
+        border-color: #5D9CEC !important;
+        color: white !important;
+        font-weight: 600;
+        border-radius: 6px;
+        width: 100%; /* Full width as in image */
+        padding: 12px;
+        transition: all 0.2s;
+    }
+    .btn-generate-main:hover {
+        background-color: #4A89DC !important;
+    }
+
+    /* Green Download Excel Button (as requested) */
+    .btn-download-excel {
+        background-color: #38761D !important; /* Specific dark green */
+        border-color: #38761D !important;
+        color: white !important;
+        font-weight: 600;
+        border-radius: 6px;
+        padding: 15px;
+    }
+    .btn-download-excel small {
+        display: block;
+        font-weight: 400;
+        font-size: 11px;
+        opacity: 0.8;
+    }
+    .btn-download-excel:hover {
+        background-color: #2F6318 !important;
+    }
+
+    /* Grey Download CSV Button */
+    .btn-download-csv {
+        background-color: #4E5154 !important; /* Specific dark grey */
+        border-color: #4E5154 !important;
+        color: white !important;
+        font-weight: 600;
+        border-radius: 6px;
+        padding: 15px;
+    }
+    .btn-download-csv small {
+        display: block;
+        font-weight: 400;
+        font-size: 11px;
+        opacity: 0.8;
+    }
+    .btn-download-csv:hover {
+        background-color: #3E4143 !important;
+    }
+
+    /* 6. Download Area & Footnote */
+    .ready-badge {
+        background-color: #E6FFEC;
+        color: #2F9C58;
+        font-weight: 600;
+        font-size: 12px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        display: inline-block;
+        margin-bottom: 20px;
+    }
+    .hr-divider {
+        border-color: #E0E6ED;
+        margin: 30px 0;
+    }
+    .system-footnote {
+        font-size: 11px;
+        color: #8A9AAB;
+        text-align: center;
+        margin-top: 40px;
+    }
+</style>
+
+<div class="container d-flex align-items-center" style="min-height: 80vh;">
+    <div class="card report-generator-card">
+        <div class="text-center">
+            <h1 class="card-title-main">Report Generator</h1>
+            <p class="card-subtitle-main">Merge multiple CSV scans into professional reports</p>
+        </div>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <div class="upload-area-box">
+                <label class="form-label fw-bold mb-1">Choose Files</label>
+                <div class="form-text mt-0">Drag & Drop or click to select multiple CSVs</div>
+                
+                <input type="file" name="scans" multiple class="form-control form-control-sm mx-auto" style="max-width: 300px;" required>
+            </div>
+
+            <div class="d-flex gap-3 mb-4">
+                <button type="submit" name="action" value="generate_excel" class="btn btn-generate-main">
+                    <i class="fas fa-cog me-2"></i>Process & Generate Excel Report
+                </button>
+                <button type="submit" name="action" value="generate_csv" class="btn btn-generate-main">
+                    <i class="fas fa-cog me-2"></i>Process & Generate CSV Report
+                </button>
+            </div>
+        </form>
+
+        {% if excel_url or csv_url %}
+            <hr class="hr-divider">
+            <div class="text-center">
+                <div class="ready-badge">
+                    <i class="fas fa-check me-2"></i>READY FOR DOWNLOAD
+                </div>
+            </div>
+
+            <div class="d-grid gap-3 d-md-flex justify-content-center">
+                {% if excel_url %}
+                    <a href="{{ excel_url }}" class="btn btn-download-excel text-start px-4 flex-fill">
+                        DOWNLOAD EXCEL
+                        <small>(.xlsx format)</small>
+                    </a>
+                {% endif %}
+
+                {% if csv_url %}
+                    <a href="{{ csv_url }}" class="btn btn-download-csv text-start px-4 flex-fill">
+                        DOWNLOAD CSV
+                        <small>(.csv format)</small>
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        <div class="system-footnote">Vulnerability Assessment Reporting System © 2026</div>
+    </div>
+</div>
+{% endblock %}

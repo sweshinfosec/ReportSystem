@@ -1,0 +1,112 @@
+/* processor/static/css/style.css */
+:root {
+    --primary: #1a2a3a;
+    --accent: #3498db;
+    --secondary: #2c3e50;
+    --success: #27ae60;
+    --warning: #f39c12;
+    --word-blue: #2b579a;
+    --bg: #f4f7f9;
+    --white: #ffffff;
+    --shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg);
+    margin: 0;
+    color: var(--primary);
+}
+
+/* Global Navigation */
+.navbar {
+    background-color: var(--primary);
+    color: var(--white);
+    padding: 15px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+
+.nav-home-link {
+    text-decoration: none;
+    color: var(--white);
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 8px 15px;
+    border-radius: 4px;
+    transition: 0.3s;
+}
+
+.nav-home-link:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+/* Layout Containers */
+.container {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 0 20px;
+}
+
+.module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 25px;
+}
+
+/* Component Styling */
+.card {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    border-top: 6px solid var(--accent);
+}
+
+.btn {
+    display: inline-block;
+    padding: 12px 20px;
+    background-color: var(--accent);
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* The Blue Proceed Button */
+.btn-blue-proceed {
+    display: inline-block;
+    background-color: var(--word-blue) !important;
+    color: #ffffff !important;
+    padding: 12px 28px;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 600;
+    margin-top: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.download-box {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f0f7ff;
+    border-radius: 8px;
+    border-left: 5px solid var(--accent);
+}
+
+.upload-form label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+input[type="file"] {
+    margin-bottom: 20px;
+    width: 100%;
+}

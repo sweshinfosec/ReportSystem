@@ -1,0 +1,57 @@
+{% extends "processor/base.html" %}
+
+{% block content %}
+<style>
+    .dashboard-container { max-width: 1000px; margin: 40px auto; text-align: center; }
+    .dashboard-title { font-weight: 700; color: var(--primary-dark); font-size: 32px; margin-bottom: 10px; }
+    .dashboard-subtitle { color: #6C757D; font-size: 15px; margin-bottom: 50px; }
+    .task-card {
+        background: #ffffff; border-radius: 12px; text-align: left;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px;
+        display: flex; flex-direction: column; height: 100%; transition: transform 0.2s;
+    }
+    .task-card:hover { transform: scale(1.02); }
+    .task-number { font-size: 18px; font-weight: 700; color: var(--primary-dark); margin-bottom: 10px; }
+    .task-text { font-size: 13px; color: #6C757D; margin-bottom: 25px; flex-grow: 1; line-height: 1.5; }
+    .btn-launch {
+        background-color: var(--accent-blue); color: white; font-weight: 600;
+        text-align: center; padding: 10px; text-decoration: none; border-radius: 6px;
+    }
+</style>
+
+<div class="dashboard-container">
+    <div class="text-start mb-3">
+        <a href="{% url 'home' %}" class="text-decoration-none text-muted small fw-bold">
+            <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+        </a>
+    </div>
+    <h1 class="dashboard-title">Reporting Dashboard</h1>
+    <p class="dashboard-subtitle">Execute individual phases of the Vulnerability Assessment process.</p>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="task-card">
+                <div class="task-number">1. Interim Report</div>
+                <p class="task-text">Merge raw Nessus CSVs into the initial Pre-Remediation report.</p>
+                <a href="{% url 'interim_pre' %}" class="btn-launch">Launch Engine</a>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="task-card">
+                <div class="task-number">2. Post-Remediation</div>
+                <p class="task-text">Compare Pre & Post scans to update status automatically.</p>
+                <a href="{% url 'interim_post' %}" class="btn-launch">Start Comparison</a>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="task-card">
+                <div class="task-number">3. Final Word Report</div>
+                <p class="task-text">Generate the professional 21-row table .docx final report.</p>
+                <a href="{% url 'word_report' %}" class="btn-launch">Export Word</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

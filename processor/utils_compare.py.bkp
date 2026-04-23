@@ -1,0 +1,26 @@
+import pandas as pd
+
+def compare_pre_post_scans(pre_file_path, post_file_path):
+    df_pre = pd.read_csv(pre_file_path)
+    df_post = pd.read_csv(post_file_path)
+
+    # Unique Key: Name + Host + Port [cite: 68, 78]
+    df_pre['uid'] = df_pre['Name'].astype(str) + df_pre['Host'].astype(str) + df_pre['Port'].astype(str)
+    df_post['uid'] = df_post['Name'].astype(str) + df_post['Host'].astype(str) + df_post['Port'].astype(str)
+
+    post_uids = set(df_post['uid'].unique())
+    
+    # Determine Status [cite: 56]
+    df_pre['Vulnerability Status'] = df_pre['uid'].apply(lambda x: "Open" if x in post_uids else "Closed")
+    
+    # Identify New Findings from Post-Remediation scan [cite: 56]
+    pre_uids = set(df_pre['uid'].unique())
+    new_findings = df_post[~df_post['uid'].isin(pre_uids)].copy()
+    
+    if not new_findings.empty:
+        new_findings['Vulnerability Status'] = "Open"
+        final_df = pd.concat([df_pre, new_findings], ignore_index=True)
+    else:
+        final_df = df_pre
+
+    return final_df.drop(columns=['uid'])

@@ -1,0 +1,29 @@
+{% extends "processor/home.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 700px; margin: auto;">
+    <h2>Phase 2: Post-Remediation Analysis</h2>
+    <p>Upload your Pre-Remediation file and your new Post-Remediation scans to calculate finding statuses.</p>
+    
+    <form method="post" enctype="multipart/form-data" class="upload-form">
+        {% csrf_token %}
+        <label><strong>1. Previous Pre-Remediation File (CSV):</strong></label>
+        <input type="file" name="pre_file" accept=".csv" required>
+        
+        <label><strong>2. New Post-Remediation Scans (CSVs):</strong></label>
+        <input type="file" name="post_scans" multiple accept=".csv" required>
+        
+        <button type="submit" class="btn btn-orange">Check Vulnerability Status</button>
+    </form>
+
+    {% if csv_url %}
+    <div class="download-box" style="border-left-color: var(--warning); background-color: #fff9f2;">
+        <p><strong>Vulnerability Status Comparison Ready:</strong></p>
+        <a href="{{ csv_url }}" download style="color: var(--warning);">Download Final Consolidated CSV</a>
+        <div style="margin-top: 20px;">
+            <a href="{% url 'word_report' %}" class="btn btn-blue">Proceed to Word Report Generation →</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
