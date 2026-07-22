@@ -81,8 +81,15 @@ def compare_pre_post_scans(pre_file_path, post_file_path, output_excel_name):
 
     def clean_and_format(df, is_final=False):
         df['ip_int'] = df['Host'].apply(ip_to_int)
-        df = df.sort_values(by=['Name', 'CVSS v3.0 Base Score', 'ip_int'], ascending=[True, False, True])
-        
+        # Sort by severity first (Critical, High, Medium, Low), same convention
+        # as the Phase-1 interim report. Without this, the sheet was sorted
+        # alphabetically by Name only, with Critical/High/Medium/Low findings
+        # scattered throughout instead of grouped.
+        sev_rank_map = {s: i for i, s in enumerate(sev_order)}
+        df['sev_rank'] = df['Severity'].map(sev_rank_map).fillna(len(sev_order))
+        df = df.sort_values(by=['sev_rank', 'Name', 'CVSS v3.0 Base Score', 'ip_int'], ascending=[True, True, False, True])
+        df = df.drop(columns=['sev_rank'])
+
         current_cols = base_cols.copy()
         if is_final:
             current_cols.append('Vulnerability Status')
